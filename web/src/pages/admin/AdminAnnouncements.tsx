@@ -233,20 +233,23 @@ export function AdminAnnouncements() {
         }
       >
         {form ? (
-          <div className="stack" style={{ gap: 14 }}>
-            <label className="field">
-              <span>Tiêu đề *</span>
+          <>
+            <div className="field">
+              <label htmlFor="nt-title">Tiêu đề</label>
               <input
+                id="nt-title"
+                className="input"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="VD: Khai giảng cơ sở Phía Nam ngày 20/11"
                 maxLength={200}
               />
-            </label>
+            </div>
 
             <div className="field">
-              <span>Nội dung</span>
+              <label id="nt-content">Nội dung</label>
               <RichEditor
+                labelId="nt-content"
                 value={form.content}
                 onChange={(html) => setForm((f) => (f ? { ...f, content: html } : f))}
                 placeholder="Nội dung thông báo cho nhân viên..."
@@ -254,15 +257,16 @@ export function AdminAnnouncements() {
             </div>
 
             <div className="field">
-              <span>Hình ảnh (không bắt buộc)</span>
-              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <label htmlFor="nt-image">Hình ảnh</label>
+              <div className="row">
                 <input
+                  id="nt-image"
+                  className="input grow"
                   value={form.image_url}
                   onChange={(e) => setForm({ ...form, image_url: e.target.value })}
                   placeholder="Đường dẫn ảnh, hoặc bấm Chọn ảnh..."
-                  style={{ flex: 1 }}
                 />
-                <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                <label className="btn btn-secondary btn-sm">
                   {uploading ? 'Đang tải...' : '🖼 Chọn ảnh'}
                   <input
                     type="file"
@@ -282,11 +286,7 @@ export function AdminAnnouncements() {
                 ) : null}
               </div>
               {form.image_url ? (
-                <img
-                  src={form.image_url}
-                  alt="Xem trước"
-                  style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8, marginTop: 8 }}
-                />
+                <img className="note-preview" src={form.image_url} alt="Xem trước" />
               ) : null}
             </div>
 
@@ -304,7 +304,7 @@ export function AdminAnnouncements() {
                 </div>
               </span>
             </label>
-          </div>
+          </>
         ) : null}
       </Modal>
 

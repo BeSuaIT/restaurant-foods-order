@@ -645,11 +645,13 @@ summary:focus-visible,
   background: #fff;
   flex-wrap: wrap;
 }
+/* Nút ✕ đóng modal: 34px cho khớp .btn-sm (trước 30px, nhỏ hơn mọi nút khác).
+   Ở khổ <=480px luận 44px trong @media cuối file áp dụng. */
 .modal-close {
   border: none;
   background: var(--muted-bg);
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 17px;
@@ -2500,12 +2502,14 @@ table.tbl td.mono {
   background: var(--muted-bg);
   border-bottom: 1px solid var(--line);
 }
+/* Nút toolbar: cao 34px và bo 7px — khớp .btn-sm (trước là 28px/6px, nhỏ hơn mọi
+   nút khác của hệ). Ở khổ <=480px luận 44px trong @media cuối file áp dụng. */
 .rt-btn {
   min-width: 30px;
-  height: 28px;
+  height: 34px;
   padding: 0 8px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   background: #fff;
   font-size: 12.5px;
   font-weight: 700;
@@ -2649,6 +2653,17 @@ select::placeholder {
   background: var(--muted-bg);
   border-radius: var(--radius-sm);
   margin: 4px 0 11px;
+}
+/* Xem trước ảnh lúc soạn: hiển thị y hệt .note-img (contain) để Admin thấy đúng
+   thứ nhân viên sẽ thấy. Trước đây dùng cover + bo góc viết tay trong inline. */
+.note-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  background: var(--muted-bg);
+  border-radius: var(--radius-sm);
+  margin-top: 8px;
 }
 .note-body {
   color: var(--text-2);
@@ -2887,14 +2902,17 @@ select::placeholder {
 @media (max-width: 480px) {
   .btn,
   .btn-sm,
+  .rt-btn,
   .qr-url,
   .c-leave,
+  .modal-close,
   .s-menu-toggle,
   .s-logout {
     min-height: 44px;
   }
   .s-logout,
-  .s-menu-toggle {
+  .s-menu-toggle,
+  .modal-close {
     width: 44px;
   }
   .c-foot-links a {

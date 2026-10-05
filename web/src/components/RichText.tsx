@@ -38,9 +38,15 @@ interface EditorProps {
   onChange: (html: string) => void;
   placeholder?: string;
   minHeight?: number;
+  /**
+   * id của <label> hiển thị phía trên. Truyền vào thì vùng soạn dùng
+   * aria-labelledby trỏ tới nhãn đó, thay cho aria-label viết cứng — nhờ vậy
+   * trình đọc màn hình đọc đúng chữ nhãn người dùng thấy.
+   */
+  labelId?: string;
 }
 
-export function RichEditor({ value, onChange, placeholder, minHeight = 200 }: EditorProps) {
+export function RichEditor({ value, onChange, placeholder, minHeight = 200, labelId }: EditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
 
@@ -69,8 +75,6 @@ export function RichEditor({ value, onChange, placeholder, minHeight = 200 }: Ed
     document.execCommand('createLink', false, url);
     onChange(ref.current?.innerHTML ?? '');
   };
-
-  const isEmpty = !value || value === '<br>' || value === '<p><br></p>' || value.replace(/<[^>]*>/g, '').trim() === '';
 
   return (
     <div className="rt">
@@ -112,18 +116,13 @@ export function RichEditor({ value, onChange, placeholder, minHeight = 200 }: Ed
         suppressContentEditableWarning
         role="textbox"
         aria-multiline="true"
-        aria-label="Nội dung thông báo"
+        aria-label={labelId ? undefined : 'Nội dung thông báo'}
+        aria-labelledby={labelId}
         data-placeholder={placeholder ?? 'Nhập nội dung thông báo...'}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onInput={(e) => onChange((e.target as HTMLDivElement).innerHTML)}
       />
-
-      {isEmpty && !focused ? (
-        <div className="tiny muted mt-4">
-          {placeholder ?? 'Nhập nội dung thông báo...'}
-        </div>
-      ) : null}
     </div>
   );
 }
