@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, formatDateTime, formatMoney, timeAgo, tokenStore, useAsync, useLiveStream } from '../../api';
+import { api, tokenStore } from '../../lib/http';
+import { formatDateTime, formatMoney, timeAgo } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
+import { useLiveStream } from '../../hooks/useLiveStream';
 import { useToast } from '../../components/Toast';
 import { OrderTimeline } from '../../components/OrderBits';
 import type { Order, OrderStatus } from '../../types';
@@ -114,9 +117,9 @@ export function OrderStatusPage() {
           {isCancelled ? (
             <>
               <div style={{ fontSize: 52 }}>😔</div>
-              <h2 style={{ fontSize: 19, marginTop: 8, color: 'var(--danger)' }}>Đơn đã bị huỷ</h2>
+              <h2 className="danger-text mt-8" style={{ fontSize: 19 }}>Đơn đã bị huỷ</h2>
               {order.rejected_reason ? (
-                <p className="small muted" style={{ marginTop: 6 }}>
+                <p className="small muted mt-6">
                   Lý do: {order.rejected_reason}
                 </p>
               ) : null}
@@ -128,7 +131,7 @@ export function OrderStatusPage() {
             <>
               <div style={{ fontSize: 52 }}>🎉</div>
               <h2 style={{ fontSize: 19, marginTop: 8 }}>Cảm ơn bạn!</h2>
-              <p className="small muted" style={{ marginTop: 6 }}>
+              <p className="small muted mt-6">
                 Đơn đã được thanh toán lúc {formatDateTime(order.paid_at)}
               </p>
             </>
@@ -142,7 +145,7 @@ export function OrderStatusPage() {
                     ? 'Nhà hàng đã nhận đơn!'
                     : 'Món đang được phục vụ'}
               </h2>
-              <p className="small muted" style={{ marginTop: 6 }}>
+              <p className="small muted mt-6">
                 {WAIT_HINTS[order.status] ?? 'Vui lòng chờ...'}
               </p>
               {order.received_by_name ? (
@@ -172,8 +175,8 @@ export function OrderStatusPage() {
         ) : null}
 
         {/* Chi tiết món */}
-        <div className="card" style={{ marginBottom: 18 }}>
-          <div className="row-between" style={{ padding: '13px 16px', borderBottom: '1px solid var(--line)' }}>
+        <div className="card mb-18">
+          <div className="row-between wait-head">
             <h3 style={{ fontSize: 15 }}>Chi tiết đơn</h3>
             <span className="badge">{order.items.reduce((s, i) => s + i.quantity, 0)} món</span>
           </div>
@@ -215,13 +218,13 @@ export function OrderStatusPage() {
         </div>
 
         {/* Thông tin + nhật ký */}
-        <div className="card" style={{ marginBottom: 18 }}>
-          <div className="row-between" style={{ padding: '13px 16px', borderBottom: '1px solid var(--line)' }}>
+        <div className="card mb-18">
+          <div className="row-between wait-head">
             <h3 style={{ fontSize: 15 }}>Tiến trình</h3>
             <span className="tiny muted">{timeAgo(order.updated_at)}</span>
           </div>
           <div style={{ padding: 16 }}>
-            <div className="o-meta" style={{ marginBottom: 14 }}>
+            <div className="o-meta mb-14">
               <div className="o-meta-item">
                 <span className="k">Bàn:</span>
                 <strong>{order.table_name ?? '—'}</strong>
@@ -247,7 +250,7 @@ export function OrderStatusPage() {
           </div>
         </div>
 
-        <div className="row" style={{ gap: 10 }}>
+        <div className="row gap-10">
           <Link className="btn btn-secondary grow" to="/menu">
             Xem thực đơn
           </Link>

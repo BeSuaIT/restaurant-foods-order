@@ -1,0 +1,179 @@
+/* ------------------------------------------------------------------ *
+ *  BIỂU ĐỒ SVG
+ *  Tách ra khỏi styles.css để file chính dễ đọc (C3).
+ *  Nội dung giữ nguyên, chỉ đổi chỗ.
+ * ------------------------------------------------------------------ */
+
+/* ==================================================================
+ *  BIỂU ĐỒ SVG (màn báo cáo doanh thu)
+ * ================================================================== */
+
+.chart {
+  width: 100%;
+}
+.chart-empty {
+  padding: 26px 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--muted-bg);
+  border-radius: var(--radius-sm);
+}
+
+/* --- Cột dọc --- */
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+}
+.chart-bar-wrap {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.chart-bar-value {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Ô giữ chỗ khi biểu đồ quá nhiều cột — giữ nhịp các cột bằng nhau. */
+.chart-bar-value-off {
+  min-height: 14px;
+}
+.chart-bar-track {
+  width: 100%;
+  height: calc(100% - 34px);
+  min-height: 60px;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(180deg, transparent, var(--muted-bg));
+  border-radius: 5px 5px 0 0;
+}
+.chart-bar-fill {
+  width: 100%;
+  background: linear-gradient(180deg, #fb923c, var(--brand));
+  border-radius: 5px 5px 0 0;
+  transition: height 0.25s ease;
+}
+.chart-bar-label {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  /* Cố ý KHÔNG overflow:hidden ở đây. Trước đây cắt bằng ellipsis nên ở 375px
+     nhãn giờ 2 chữ số ("00", "03"...) bị nuốt mất chữ số thứ hai — người dùng
+     đọc "0" thay vì "00" mà không có dấu hiệu nào cho biết đã bị cắt.
+     Nhãn cách nhau theo bước (labelStep) nên để tràn 1–2px không chạm nhau. */
+}
+
+/* --- Cột ngang --- */
+.chart-hbars {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.chart-hbar {
+  display: grid;
+  grid-template-columns: minmax(90px, 34%) 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.chart-hbar-name {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.chart-hbar-track {
+  height: 9px;
+  background: var(--muted-bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.chart-hbar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand-dark), var(--brand));
+  border-radius: 999px;
+}
+.chart-hbar-value {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 52px;
+  text-align: right;
+}
+
+/* --- Đường / vùng --- */
+.chart-svg-wrap {
+  position: relative;
+}
+.chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.chart-axis-text {
+  font-size: 10.5px;
+  fill: var(--muted);
+  font-family: var(--font);
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.chart-legend-item i {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+/* --- Vòng tròn --- */
+.chart-donut {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.chart-donut-svg {
+  width: 168px;
+  height: 168px;
+  flex: 0 0 auto;
+}
+.chart-donut-total {
+  font-size: 17px;
+  font-weight: 800;
+  fill: var(--text);
+  font-family: var(--font);
+}
+.chart-donut-label {
+  font-size: 10.5px;
+  fill: var(--muted);
+  font-family: var(--font);
+}
+.chart-donut-legend {
+  flex: 1 1 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.chart-donut-legend .chart-legend-item strong {
+  margin-left: auto;
+  font-size: 12px;
+  white-space: nowrap;
+}

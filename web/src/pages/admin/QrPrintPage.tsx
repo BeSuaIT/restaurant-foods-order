@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { AsyncBlock } from '../../components/PageParts';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, tokenStore, useAsync } from '../../api';
+import { api, tokenStore } from '../../lib/http';
+import { useAsync } from '../../hooks/useAsync';
 import type { Branch } from '../../types';
 
 /* ================================================================== *
@@ -133,16 +135,17 @@ export function QrPrintPage() {
         </div>
       ) : null}
 
-      {state.loading ? (
-        <div className="loading-box">Đang tải mã QR...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : sheet.length === 0 ? (
-        <div className="empty">
-          <div className="icon">🪑</div>
-          <div>Không có bàn nào để in.</div>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải mã QR..."
+        empty={sheet.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🪑</div>
+            <div>Không có bàn nào để in.</div>
+          </div>
+        ) : undefined}
+      >
         <>
           <p className="qr-print-hint no-print">
             Mỗi thẻ in ở khổ <strong>50mm × 70mm</strong>, mỗi hàng <strong>3 thẻ</strong> trên giấy A4
@@ -158,18 +161,22 @@ export function QrPrintPage() {
                   <div className="qr-print-code">{q.code}</div>
                 </div>
                 <div className="qr-print-meta">
-                  {q.branch_name ? `${q.branch_name} · ` : ''}
-                  {q.area ?? '—'} · {q.seats} chỗ
+                  {q.branch_name ? <div>{q.branch_name}</div> : null}
+                  {/* Khoảng trắng không ngắt quanh "·" để dấu không bao giờ bị đẩy
+                      xuống đầu dòng khi tên khu vực dài. */}
+                  <div>{`${q.area ?? '—'}\u00A0·\u00A0${q.seats} chỗ`}</div>
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="qr-print-img" src={q.qr} alt={`QR bàn ${q.code}`} width={160} height={160} />
-                <div className="qr-print-cta">📱 Quét để gọi món</div>
-                {!q.is_active ? <div className="qr-print-off">Bàn đang tạm ngưng</div> : null}
+                <div className="qr-print-foot">
+                  <div className="qr-print-cta">📱 Quét để gọi món</div>
+                  {!q.is_active ? <span className="qr-print-off">Tạm ngưng</span> : null}
+                </div>
               </div>
             ))}
           </div>
         </>
-      )}
+      </AsyncBlock>
     </div>
   );
 }

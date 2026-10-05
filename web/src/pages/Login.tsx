@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, tokenStore, type StaffUser } from '../api';
+import { api, tokenStore } from '../lib/http';
+import type { StaffUser } from '../types';
 import { useToast } from '../components/Toast';
 
 interface Props {

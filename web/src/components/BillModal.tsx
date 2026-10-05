@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
-import { api, durationBetween, formatDateTime, formatMoneyPlain, useAsync } from '../api';
+import { api } from '../lib/http';
+import { durationBetween, formatDateTime, formatMoneyPlain } from '../lib/format';
+import { useAsync } from '../hooks/useAsync';
 import type { Order } from '../types';
 import { PAYMENT_LABEL } from '../types';
 

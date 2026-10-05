@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { api, useAsync } from '../../api';
+import { AsyncBlock, ModalFooter } from '../../components/PageParts';
+import { api } from '../../lib/http';
+import { useAsync } from '../../hooks/useAsync';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
@@ -224,7 +226,7 @@ export function AdminTables() {
       <div className="alert alert-info">
         📱 In thẻ QR và dán lên mặt bàn. Khách quét mã sẽ tự động vào màn nhập tên + số điện thoại rồi order.
         Đường dẫn QR là địa chỉ chứa mã — đảm bảo <code>PUBLIC_URL</code> trong cấu hình đang trỏ đúng.
-        <ul style={{ margin: '8px 0 0 18px' }}>
+        <ul className="bullets">
           <li>
             Bấm vào ô <strong>Đường dẫn QR</strong> (hoặc 📋) để sao chép đường dẫn của bàn đó.
           </li>
@@ -238,19 +240,20 @@ export function AdminTables() {
         </ul>
       </div>
 
-      {state.loading ? (
-        <div className="loading-box">Đang tải...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">🪑</div>
-          <div>Chưa có bàn nào</div>
-          <button className="btn" style={{ marginTop: 14 }} onClick={() => setForm(emptyTable())} type="button">
-            + Thêm bàn đầu tiên
-          </button>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🪑</div>
+            <div>Chưa có bàn nào</div>
+            <button className="btn mt-14" onClick={() => setForm(emptyTable())} type="button">
+              + Thêm bàn đầu tiên
+            </button>
+          </div>
+        ) : undefined}
+      >
         <div className="table-wrap">
           <table className="tbl">
             <thead>
@@ -272,9 +275,9 @@ export function AdminTables() {
                   <td>
                     <strong className="c-price">{t.code}</strong>
                   </td>
-                  <td>{t.name}</td>
-                  <td className="small">{t.branch_name ?? <span className="muted">—</span>}</td>
-                  <td className="small">{t.area ?? '—'}</td>
+                  <td className="nowrap">{t.name}</td>
+                  <td className="small nowrap">{t.branch_name ?? <span className="muted">—</span>}</td>
+                  <td className="small nowrap">{t.area ?? '—'}</td>
                   <td className="right">{t.seats}</td>
                   <td className="right">
                     {t.active_order_count ? (
@@ -301,7 +304,7 @@ export function AdminTables() {
                     </button>
                   </td>
                   <td>
-                    <div className="row" style={{ gap: 5, justifyContent: 'flex-end' }}>
+                    <div className="row row-end">
                       <button
                         className="btn btn-ghost btn-sm"
                         onClick={() => {
@@ -324,7 +327,7 @@ export function AdminTables() {
                       <button className="btn btn-ghost btn-sm" onClick={() => void regenerate(t)} type="button" title="Tạo QR mới">
                         🔄
                       </button>
-                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setDeleting(t)} type="button">
+                      <button className="btn btn-ghost btn-sm danger-text" onClick={() => setDeleting(t)} type="button">
                         Xoá
                       </button>
                     </div>
@@ -334,24 +337,14 @@ export function AdminTables() {
             </tbody>
           </table>
         </div>
-      )}
+      </AsyncBlock>
 
       {/* ---- Form bàn ---- */}
       <Modal
         open={!!form}
         title={form?.id ? `Sửa bàn: ${form.code}` : 'Thêm bàn mới'}
         onClose={() => setForm(null)}
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setForm(null)} disabled={busy} type="button">
-              Huỷ
-            </button>
-            <button className="btn" onClick={save} disabled={busy} type="button">
-              {busy && <span className="spinner" />}
-              {form?.id ? 'Lưu' : 'Tạo bàn'}
-            </button>
-          </>
-        }
+        footer={<ModalFooter onCancel={() => setForm(null)} onConfirm={save} busy={busy} confirmLabel={form?.id ? 'Lưu' : 'Tạo bàn'} />}
       >
         {form ? (
           <>
@@ -382,11 +375,11 @@ export function AdminTables() {
                   </option>
                 ))}
               </select>
-              <div className="tiny muted" style={{ marginTop: 4 }}>
+              <div className="tiny muted mt-4">
                 Bàn thuộc cơ sở nào thì chỉ nhân viên của cơ sở đó mới thấy &amp; phục vụ được.
               </div>
             </div>
-            <div className="row" style={{ gap: 12 }}>
+            <div className="row gap-12">
               <div className="field grow">
                 <label htmlFor="ta">Khu vực</label>
                 <input id="ta" className="input" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} placeholder="VD: Tầng 1, Ngoài trời" />
@@ -468,7 +461,7 @@ export function AdminTables() {
         message={
           <div>
             Xoá bàn <strong>{deleting?.code}</strong> — {deleting?.name}?
-            <div className="small muted" style={{ marginTop: 8 }}>
+            <div className="small muted mt-8">
               Mã QR của bàn sẽ ngừng hoạt động. Nếu bàn đã có lịch sử order, hệ thống sẽ vô hiệu hoá thay vì xoá hẳn.
             </div>
           </div>

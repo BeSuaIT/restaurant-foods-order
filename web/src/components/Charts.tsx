@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { formatPercent } from '../lib/format';
 
 /* ================================================================== *
  *  BIỂU ĐỒ SVG (không dùng thư viện)
@@ -36,17 +37,23 @@ export function BarChart({ points, height = 190, format = (n) => String(n), empt
     return <div className="chart-empty">{emptyText ?? 'Không có dữ liệu.'}</div>;
   }
 
+  /* Nhiều cột thì không đủ bề ngang để hiện số và nhãn mọi cột:
+     số bị cắt thành "…8", nhãn ngày chồng lên nhau. Khi đó chỉ hiện nhãn theo bước,
+     số thì đọc qua tooltip (title) trên cả cột. */
+  const showValues = points.length <= 8;
+  const labelStep = Math.ceil(points.length / 10);
+
   return (
     <div className="chart chart-bars" style={{ minHeight: height }}>
-      {points.map((p) => {
+      {points.map((p, i) => {
         const pct = Math.max(1.5, (p.value / max) * 100);
         return (
           <div className="chart-bar-wrap" key={p.label} title={`${p.label}: ${format(p.value)}${p.hint ? ` — ${p.hint}` : ''}`}>
-            <div className="chart-bar-value">{format(p.value)}</div>
+            {showValues ? <div className="chart-bar-value">{format(p.value)}</div> : <div className="chart-bar-value chart-bar-value-off" />}
             <div className="chart-bar-track">
               <div className="chart-bar-fill" style={{ height: `${pct}%` }} />
             </div>
-            <div className="chart-bar-label">{p.label}</div>
+            <div className="chart-bar-label">{showValues || i % labelStep === 0 ? p.label : ''}</div>
           </div>
         );
       })}
@@ -285,7 +292,7 @@ export function DonutChart({
                 strokeDasharray={`${Math.max(0, dash - 2)} ${C - Math.max(0, dash - 2)}`}
                 strokeDashoffset={-offset}
               >
-                <title>{`${p.label}: ${format(p.value)} (${(frac * 100).toFixed(1)}%)`}</title>
+                <title>{`${p.label}: ${format(p.value)} (${formatPercent(frac * 100)})`}</title>
               </circle>
             );
             offset += dash;
@@ -302,10 +309,10 @@ export function DonutChart({
 
       <div className="chart-donut-legend">
         {points.map((p, i) => (
-          <div className="chart-legend-item" key={p.label} title={`${format(p.value)} (${((p.value / total) * 100).toFixed(1)}%)`}>
+          <div className="chart-legend-item" key={p.label} title={`${format(p.value)} (${formatPercent((p.value / total) * 100)})`}>
             <i style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
             <span className="truncate">{p.label}</span>
-            <strong>{((p.value / total) * 100).toFixed(1)}%</strong>
+            <strong>{formatPercent((p.value / total) * 100)}</strong>
           </div>
         ))}
       </div>

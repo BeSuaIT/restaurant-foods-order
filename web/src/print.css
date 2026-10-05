@@ -1,0 +1,106 @@
+/* ------------------------------------------------------------------ *
+ *  QUY TẮC IN
+ *  Tách ra khỏi styles.css để file chính dễ đọc (C3).
+ *  Nội dung giữ nguyên, chỉ đổi chỗ.
+ * ------------------------------------------------------------------ */
+
+/* ==================================================================
+ *  PRINT
+ * ================================================================== */
+
+@media print {
+  /* Mặc định là A4. Trước đây đặt chung `size: 80mm` cho cả tài liệu nên bấm
+     in thẻ QR ra khổ 80mm: chữ bé và mã QR vỡ, không quét được.
+     Khổ 80mm giờ chỉ áp cho tờ hoá đơn, nhờ trang có tên `bill` + thuộc tính
+     `page: bill` (Chromium hỗ trợ). CHỐT cao = 297mm vì CSS không cho phép
+     `size: 80mm auto` — cấu trúc đó không hợp lệ nên bị bỏ qua, in ra A4. */
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  @page bill {
+    size: 80mm 297mm;
+    margin: 4mm;
+  }
+  .bill-page,
+  .bill-modal {
+    page: bill;
+  }
+  body {
+    background: #fff !important;
+  }
+  .no-print,
+  .s-sidebar,
+  .s-topbar,
+  .bill-modal-bar,
+  .toast-wrap {
+    display: none !important;
+  }
+  .s-main {
+    margin-left: 0 !important;
+  }
+  /* Đang mở hoá đơn (`.s-content` chứa backdrop): chỉ in tờ hoá đơn, ẩn phần
+     còn lại của trang — nếu không bảng và chữ của trang admin sẽ bị in kèm
+     ra khổ 80mm. Dùng `:has()` để không cần thêm class từ JS. */
+  .s-content:has(> .bill-modal-backdrop) > *:not(.bill-modal-backdrop) {
+    display: none !important;
+  }
+  .bill-modal-backdrop {
+    position: static;
+    background: none;
+    backdrop-filter: none;
+    padding: 0;
+    display: block;
+  }
+  .bill-modal {
+    width: auto;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+    overflow: visible;
+  }
+  .bill-modal-body {
+    overflow: visible;
+    background: #fff;
+    padding: 0;
+  }
+  .bill-page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    font-size: 11.5px;
+  }
+  .bill-table td {
+    border-bottom: 1px dotted #999;
+  }
+}
+
+/* ---- Trang in thẻ QR (/admin/tables/print) ----
+   Khối này từng nằm cuối styles.css; chuyển vào print.css cùng phần còn lại
+   để toàn bộ quy tắc @media print nằm một chỗ. */
+
+@media print {
+  .qr-print-root {
+    background: #fff;
+    min-height: 0;
+  }
+  .qr-print-sheet {
+    max-width: none;
+    margin: 0;
+    gap: 4mm;
+    /* A4 dọc rộng 210mm, lề mặc định 2x10mm -> còn 190mm.
+       3 cột: 3 x 50mm + 2 x 4mm = 158mm, vừa khít và luôn đủ chỗ dù máy in
+       tự thêm lề. Chiều cao 297 - 20 = 277mm -> 4 hàng x 70mm = 280mm (hơi
+       tràn) nên thực tế 3 hàng/thang an toàn, không bị cắt thẻ giữa trang. */
+    grid-template-columns: repeat(3, 50mm);
+    justify-content: center;
+  }
+  .qr-print-card {
+    border-color: #cbd5e1;
+    box-shadow: none;
+  }
+}

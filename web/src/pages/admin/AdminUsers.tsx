@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { api, formatDateTime, useAsync } from '../../api';
+import { AsyncBlock, ModalFooter } from '../../components/PageParts';
+import { api } from '../../lib/http';
+import { formatDateTime } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
@@ -170,16 +173,17 @@ export function AdminUsers() {
         </div>
       </div>
 
-      {state.loading ? (
-        <div className="loading-box">Đang tải...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">👥</div>
-          <div>Không tìm thấy tài khoản</div>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">👥</div>
+            <div>Không tìm thấy tài khoản</div>
+          </div>
+        ) : undefined}
+      >
         <div className="table-wrap">
           <table className="tbl">
             <thead>
@@ -200,7 +204,7 @@ export function AdminUsers() {
               {rows.map((u) => (
                 <tr key={u.id}>
                   <td className="mono strong">{u.username}</td>
-                  <td>
+                  <td className="nowrap">
                     <div>{u.full_name}</div>
                     {u.note ? <div className="tiny muted">{u.note}</div> : null}
                   </td>
@@ -209,7 +213,7 @@ export function AdminUsers() {
                       {u.role === 'admin' ? 'Admin' : 'Nhân viên'}
                     </span>
                   </td>
-                  <td className="small">
+                  <td className="small nowrap">
                     {u.role === 'admin' ? (
                       <span className="muted">Tất cả cơ sở</span>
                     ) : u.branch_name ? (
@@ -218,7 +222,7 @@ export function AdminUsers() {
                       <span className="badge badge-warn">Chưa gán</span>
                     )}
                   </td>
-                  <td className="small">{u.phone ?? '—'}</td>
+                  <td className="small nowrap">{u.phone ?? '—'}</td>
                   <td className="right">{u.received_orders}</td>
                   <td className="right">{u.paid_orders}</td>
                   <td className="tiny muted nowrap">{u.last_login_at ? formatDateTime(u.last_login_at) : 'Chưa'}</td>
@@ -228,7 +232,7 @@ export function AdminUsers() {
                     </span>
                   </td>
                   <td>
-                    <div className="row" style={{ gap: 5, justifyContent: 'flex-end' }}>
+                    <div className="row row-end">
                       <button className="btn btn-ghost btn-sm" onClick={() => { setForm({ ...emptyForm(), id: u.id, username: u.username, full_name: u.full_name, role: u.role, phone: u.phone ?? '', note: u.note ?? '', branch_id: u.branch_id, is_active: u.is_active, password: '' }); setErrors([]); }} type="button">
                         Sửa
                       </button>
@@ -238,7 +242,7 @@ export function AdminUsers() {
                       <button className="btn btn-ghost btn-sm" onClick={() => void toggleActive(u)} type="button">
                         {u.is_active ? 'Khoá' : 'Mở'}
                       </button>
-                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setDeleting(u)} type="button">
+                      <button className="btn btn-ghost btn-sm danger-text" onClick={() => setDeleting(u)} type="button">
                         Xoá
                       </button>
                     </div>
@@ -248,24 +252,14 @@ export function AdminUsers() {
             </tbody>
           </table>
         </div>
-      )}
+      </AsyncBlock>
 
       {/* ---- Form tài khoản ---- */}
       <Modal
         open={!!form}
         title={form?.id ? `Sửa tài khoản: ${form.username}` : 'Tạo tài khoản mới'}
         onClose={() => setForm(null)}
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setForm(null)} disabled={busy} type="button">
-              Huỷ
-            </button>
-            <button className="btn" onClick={save} disabled={busy} type="button">
-              {busy && <span className="spinner" />}
-              {form?.id ? 'Lưu thay đổi' : 'Tạo tài khoản'}
-            </button>
-          </>
-        }
+        footer={<ModalFooter onCancel={() => setForm(null)} onConfirm={save} busy={busy} confirmLabel={form?.id ? 'Lưu thay đổi' : 'Tạo tài khoản'} />}
       >
         {form ? (
           <>
@@ -314,7 +308,7 @@ export function AdminUsers() {
                   <select id="fb" className="select" value="" disabled>
                     <option>Tất cả cơ sở (Admin)</option>
                   </select>
-                  <div className="tiny muted" style={{ marginTop: 4 }}>
+                  <div className="tiny muted mt-4">
                     Admin xem &amp; thao tác được tất cả cơ sở, nên không gán cơ sở cụ thể.
                   </div>
                 </>
@@ -334,7 +328,7 @@ export function AdminUsers() {
                       </option>
                     ))}
                   </select>
-                  <div className="tiny muted" style={{ marginTop: 4 }}>
+                  <div className="tiny muted mt-4">
                     Nhân viên chỉ thấy đơn &amp; bàn của cơ sở được gán.
                   </div>
                 </>
@@ -349,7 +343,7 @@ export function AdminUsers() {
               <input id="fp" className="input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="new-password" />
             </div>
 
-            <div className="row" style={{ gap: 12 }}>
+            <div className="row gap-12">
               <div className="field grow">
                 <label htmlFor="fph">Số điện thoại</label>
                 <input id="fph" className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="0900 000 000" />
@@ -374,14 +368,12 @@ export function AdminUsers() {
         title="Đặt lại mật khẩu"
         onClose={() => setResetting(null)}
         footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setResetting(null)} disabled={busy} type="button">
-              Huỷ
-            </button>
-            <button className="btn" onClick={doReset} disabled={busy} type="button">
-              {busy && <span className="spinner" />} Đặt lại
-            </button>
-          </>
+          <ModalFooter
+            busy={busy}
+            onCancel={() => setResetting(null)}
+            onConfirm={doReset}
+            confirmLabel="Đặt lại"
+          />
         }
       >
         <p className="small">
@@ -403,7 +395,7 @@ export function AdminUsers() {
         message={
           <div>
             Xoá tài khoản <strong>{deleting?.username}</strong> ({deleting?.full_name})?
-            <div className="small muted" style={{ marginTop: 8 }}>
+            <div className="small muted mt-8">
               Lịch sử order đã ghi nhận vẫn được giữ nguyên. Nếu chỉ muốn ngăn đăng nhập, hãy dùng nút “Khoá”.
             </div>
           </div>

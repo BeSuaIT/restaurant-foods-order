@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { api, formatDateTime, timeAgo, tokenStore, useAsync, useLiveStream, useStaffAuth } from '../../api';
+import { AsyncBlock } from '../../components/PageParts';
+import { api, tokenStore } from '../../lib/http';
+import { formatDateTime, timeAgo } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
+import { useLiveStream } from '../../hooks/useLiveStream';
+import { useStaffAuth } from '../../hooks/useStaffAuth';
 import { STAFF_SECTIONS, ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { RichView } from '../../components/RichText';
 import { useAnnouncementBadge } from '../../components/announcements';
@@ -97,24 +102,25 @@ export function StaffNotifications() {
         ) : null
       }
     >
-      {state.loading ? (
-        <div className="loading-box">Đang tải thông báo...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">📢</div>
-          <div className="strong">Chưa có thông báo nào</div>
-          <div className="small">
-            Khi Admin đăng thông báo mới (sự kiện, thay đổi lịch, sự cố...) bạn sẽ thấy ở đây.
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải thông báo..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">📢</div>
+            <div className="strong">Chưa có thông báo nào</div>
+            <div className="small">
+              Khi Admin đăng thông báo mới (sự kiện, thay đổi lịch, sự cố...) bạn sẽ thấy ở đây.
+            </div>
           </div>
-        </div>
-      ) : (
+        ) : undefined}
+      >
         <div className="note-list">
           {rows.map((a) => (
             <article className={`note ${a.is_read ? '' : 'unread'}`} key={a.id}>
               <button className="note-head" onClick={() => void markRead(a)} type="button">
-                <div className="grow" style={{ minWidth: 0 }}>
+                <div className="grow minw-0">
                   <div className="note-title">
                     {a.title}
                     {a.is_read ? null : <span className="badge badge-danger note-new">Mới</span>}
@@ -139,7 +145,7 @@ export function StaffNotifications() {
             </article>
           ))}
         </div>
-      )}
+      </AsyncBlock>
     </AppLayout>
   );
 }

@@ -1,6 +1,11 @@
 import { useState } from 'react';
-import { api, durationBetween, formatMoney, formatTime, timeAgo, tokenStore, useAsync, useLiveStream, useStaffAuth } from '../../api';
+import { api, tokenStore } from '../../lib/http';
+import { durationBetween, formatMoney, formatTime, timeAgo } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
+import { useLiveStream } from '../../hooks/useLiveStream';
+import { useStaffAuth } from '../../hooks/useStaffAuth';
 import { ADMIN_SECTIONS, AppLayout, STAFF_SECTIONS } from '../../components/AppLayout';
+import { BranchFilter } from '../../components/PageParts';
 import { BillModal } from '../../components/BillModal';
 import { OrderItems, OrderTimeline, StatusBadge } from '../../components/OrderBits';
 import { ConfirmDialog } from '../../components/Modal';
@@ -94,19 +99,7 @@ export function StaffOrders() {
       subtitle={`${pendingList.length} đơn đang chờ xác nhận${draftList.length ? ` · ${draftList.length} đơn chưa order` : ''}`}
       actions={
         isAdmin ? (
-          <select
-            className="input"
-            style={{ width: 200, padding: '7px 10px' }}
-            value={branchFilter === '' ? '' : String(branchFilter)}
-            onChange={(e) => setBranchFilter(e.target.value === '' ? '' : Number(e.target.value))}
-          >
-            <option value="">🏢 Tất cả cơ sở</option>
-            {(branches.data ?? []).map((b) => (
-              <option key={b.id} value={b.id}>
-                🏢 {b.name}
-              </option>
-            ))}
-          </select>
+          <BranchFilter branchFilter={branchFilter} onChange={setBranchFilter} branches={branches.data ?? []} />
         ) : user && user.branch_name ? (
           <span className="badge badge-info">🏢 {user.branch_name}</span>
         ) : null
@@ -137,7 +130,7 @@ export function StaffOrders() {
       </div>
 
       {tab === 'draft' ? (
-        <div className="alert alert-info" style={{ marginBottom: 14 }}>
+        <div className="alert alert-info mb-14">
           ℹ️ Đây là các phiên khách <strong>đã quét QR và nhập tên/SĐT nhưng chưa gửi món</strong> (quét nhầm, điện
           thoại hết pin, khách bỏ đi...). Bạn có thể <strong>xoá</strong> để dọn sạch; hệ thống cũng tự động xoá các
           đơn này sau <strong>24 giờ</strong> kể từ lúc tạo.
@@ -170,14 +163,14 @@ export function StaffOrders() {
             rows.map((o) => (
               <div className="o-card" key={o.id}>
                 <div className="o-card-head">
-                  <div className="row wrap" style={{ gap: 14 }}>
+                  <div className="stack">
                     <div>
-                      <div className="row" style={{ gap: 8 }}>
+                      <div className="o-card-title">
                         <span className="badge badge-brand">🪑 {o.table_name ?? '—'}</span>
                         {o.table_branch_name ? <span className="badge">🏢 {o.table_branch_name}</span> : null}
                         <span className="mono small strong">{o.order_no}</span>
                       </div>
-                      <div className="tiny muted" style={{ marginTop: 3 }}>
+                      <div className="tiny muted o-card-sub">
                         👤 {o.customer_name} · ☎ {o.customer_phone}
                       </div>
                     </div>
@@ -188,9 +181,7 @@ export function StaffOrders() {
                       </div>
                       <div className="o-meta-item">
                         <span className="k">Chờ:</span>
-                        <strong className={o.status === 'pending' ? '' : 'muted'} style={o.status === 'pending' ? { color: 'var(--warn)' } : undefined}>
-                          {durationBetween(o.started_at, null)}
-                        </strong>
+                        <strong className={o.status === 'pending' ? 'warn' : 'muted'}>{durationBetween(o.started_at, null)}</strong>
                       </div>
                       {o.received_by_name ? (
                         <div className="o-meta-item">
@@ -206,7 +197,7 @@ export function StaffOrders() {
                 <div className="o-card-body">
                   <OrderItems order={o} />
                   {o.note ? (
-                    <div className="alert alert-warn" style={{ marginTop: 12, marginBottom: 0 }}>
+                    <div className="alert alert-warn note-inline">
                       📝 Ghi chú: {o.note}
                     </div>
                   ) : null}
@@ -214,7 +205,7 @@ export function StaffOrders() {
                     <span className="muted small">
                       {o.items.reduce((s, i) => s + i.quantity, 0)} món
                     </span>
-                    <span style={{ fontSize: 19, fontWeight: 800, color: 'var(--brand-dark)' }}>
+                    <span className="total-label">
                       {formatMoney(o.total)}
                     </span>
                   </div>
@@ -227,7 +218,7 @@ export function StaffOrders() {
 
                   {o.status === 'pending' ? (
                     <>
-                      <button className="btn btn-ghost btn-sm btn-danger" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', borderColor: 'transparent' }} onClick={() => setRejecting(o)} type="button">
+                      <button className="btn btn-sm btn-danger-soft" onClick={() => setRejecting(o)} type="button">
                         Huỷ đơn
                       </button>
                       <button
@@ -281,7 +272,7 @@ export function StaffOrders() {
             <div className="modal-header">
               <div>
                 <h3 style={{ fontSize: 16 }} className="mono">{detail.order_no}</h3>
-                <div className="tiny muted" style={{ marginTop: 3 }}>
+                <div className="tiny muted mt-3">
                   🪑 {detail.table_name}
                   {detail.table_branch_name ? ` · 🏢 ${detail.table_branch_name}` : ''} · 👤 {detail.customer_name} · ☎{' '}
                   {detail.customer_phone}
@@ -292,12 +283,12 @@ export function StaffOrders() {
               </button>
             </div>
             <div className="modal-body">
-              <div className="row" style={{ marginBottom: 14 }}>
+              <div className="row mb-14">
                 <StatusBadge status={detail.status} />
                 <span className="tiny muted">Cập nhật {timeAgo(detail.updated_at)}</span>
               </div>
               <OrderItems order={detail} />
-              <h4 style={{ fontSize: 14, margin: '18px 0 10px' }}>Nhật ký</h4>
+              <h4 className="sub-head">Nhật ký</h4>
               <OrderTimeline order={detail} />
             </div>
             <div className="modal-footer">
@@ -361,7 +352,7 @@ export function StaffOrders() {
               <strong>{deletingDraft?.table_name}</strong> — {deletingDraft?.customer_name} (
               {deletingDraft?.customer_phone})?
             </p>
-            <p className="small muted" style={{ marginTop: 8 }}>
+            <p className="small muted mt-8">
               Khách chưa gửi món nên xoá không ảnh hưởng đơn thật. Nếu khách đang mở trình duyệt trên bàn, họ sẽ
               được tạo phiên mới khi tải lại trang. (Nếu không xoá, hệ thống cũng tự dọn sau 24h.)
             </p>

@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { api, useAsync } from '../../api';
+import { AsyncBlock, ModalFooter } from '../../components/PageParts';
+import { api } from '../../lib/http';
+import { useAsync } from '../../hooks/useAsync';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
+import { formatCoord } from '../../lib/format';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
 import type { Branch } from '../../types';
@@ -128,7 +131,7 @@ export function AdminSettings() {
     >
       <div className="alert alert-info">
         🏢 Cơ sở dùng để <strong>phân tách bàn &amp; nhân viên</strong>:
-        <ul style={{ margin: '8px 0 0 18px' }}>
+        <ul className="bullets">
           <li>Trong <strong>Quản lý bàn &amp; mã QR</strong>, mỗi bàn thuộc 1 cơ sở.</li>
           <li>Trong <strong>Quản lý tài khoản</strong>, gán nhân viên vào cơ sở.</li>
           <li>Nhân viên chỉ thấy đơn &amp; bàn của cơ sở mình. Admin xem tất cả và có bộ lọc cơ sở.</li>
@@ -138,36 +141,37 @@ export function AdminSettings() {
         </ul>
       </div>
 
-      {state.loading ? (
-        <div className="loading-box">Đang tải...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">🏢</div>
-          <div>Chưa có cơ sở nào</div>
-          <button className="btn" style={{ marginTop: 14 }} onClick={() => setForm(emptyForm())} type="button">
-            + Tạo cơ sở đầu tiên
-          </button>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🏢</div>
+            <div>Chưa có cơ sở nào</div>
+            <button className="btn mt-14" onClick={() => setForm(emptyForm())} type="button">
+              + Tạo cơ sở đầu tiên
+            </button>
+          </div>
+        ) : undefined}
+      >
         <div className="card-grid">
           {rows.map((b) => (
             <div className="card" key={b.id}>
-              <div className="row-between" style={{ marginBottom: 8 }}>
+              <div className="row-between mb-8">
                 <strong style={{ fontSize: 16 }}>🏢 {b.name}</strong>
                 <span className={`badge ${b.is_active ? 'badge-ok' : ''}`}>
                   {b.is_active ? 'Hoạt động' : 'Đã tắt'}
                 </span>
               </div>
 
-              <div className="small" style={{ marginBottom: 6 }}>
+              <div className="small mb-6">
                 📍 {b.address ?? <span className="muted">Chưa có địa chỉ</span>}
               </div>
-              <div className="small" style={{ marginBottom: 6 }}>
+              <div className="small mb-6">
                 ☎️ {b.phone ?? <span className="muted">Chưa có số điện thoại</span>}
               </div>
-              <div className="small" style={{ marginBottom: 6 }}>
+              <div className="small mb-6">
                 📌{' '}
                 {b.lat != null && b.lng != null ? (
                   <a
@@ -177,7 +181,7 @@ export function AdminSettings() {
                     className="mono"
                     style={{ fontSize: 12 }}
                   >
-                    {Number(b.lat).toFixed(6)}, {Number(b.lng).toFixed(6)}
+                    {formatCoord(b.lat)}, {formatCoord(b.lng)}
                   </a>
                 ) : (
                   <span className="muted">Chưa nhập toạ độ</span>
@@ -217,8 +221,8 @@ export function AdminSettings() {
                   Sửa
                 </button>
                 <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ color: 'var(--danger)' }}
+                  className="btn btn-ghost btn-sm danger-text"
+
                   onClick={() => setDeleting(b)}
                   type="button"
                 >
@@ -228,24 +232,14 @@ export function AdminSettings() {
             </div>
           ))}
         </div>
-      )}
+      </AsyncBlock>
 
       {/* ---- Form cơ sở ---- */}
       <Modal
         open={!!form}
         title={form?.id ? `Sửa cơ sở: ${form.name}` : 'Thêm cơ sở mới'}
         onClose={() => setForm(null)}
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setForm(null)} disabled={busy} type="button">
-              Huỷ
-            </button>
-            <button className="btn" onClick={save} disabled={busy} type="button">
-              {busy && <span className="spinner" />}
-              {form?.id ? 'Lưu' : 'Tạo cơ sở'}
-            </button>
-          </>
-        }
+        footer={<ModalFooter onCancel={() => setForm(null)} onConfirm={save} busy={busy} confirmLabel={form?.id ? 'Lưu' : 'Tạo cơ sở'} />}
       >
         {form ? (
           <>
@@ -294,7 +288,7 @@ export function AdminSettings() {
 
             <div className="field">
               <label htmlFor="blat">Toạ độ (vĩ độ, kinh độ)</label>
-              <div className="row" style={{ gap: 10 }}>
+              <div className="row gap-10">
                 <input
                   id="blat"
                   className="input mono"
@@ -312,7 +306,7 @@ export function AdminSettings() {
                   placeholder="106.7009"
                 />
               </div>
-              <div className="tiny muted" style={{ marginTop: 4 }}>
+              <div className="tiny muted mt-4">
                 Dùng cho tính năng <strong>chấm công vị trí</strong> (định vị nhân viên trong bán kính cơ sở).
                 Mở Google Maps → bấm chuột phải vào vị trí cơ sở → sao chép 2 con số đầu. Để trống nếu chưa
                 cần dùng.
@@ -358,7 +352,7 @@ export function AdminSettings() {
         message={
           <div>
             Xoá cơ sở <strong>{deleting?.name}</strong>?
-            <div className="small muted" style={{ marginTop: 8 }}>
+            <div className="small muted mt-8">
               Cơ sở đang có {deleting?.table_count ?? 0} bàn và {deleting?.user_count ?? 0} nhân viên sẽ chỉ bị vô
               hiệu hoá. Hãy chuyển bàn/nhân viên sang cơ sở khác trước khi xoá.
             </div>

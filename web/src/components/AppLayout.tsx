@@ -1,6 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { initials, tokenStore, useAsync, useLiveStream, useStaffAuth } from '../api';
+import { initials } from '../lib/format';
+import { tokenStore } from '../lib/http';
+import { useAsync } from '../hooks/useAsync';
+import { useLiveStream } from '../hooks/useLiveStream';
+import { useStaffAuth } from '../hooks/useStaffAuth';
 import { useToast } from './Toast';
 import { useAnnouncementBadge } from './announcements';
 import { AnnouncementPopup } from './AnnouncementPopup';
@@ -174,7 +178,7 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
 
       <div className="s-main">
         <header className="s-topbar no-print">
-          <div className="row" style={{ gap: 12 }}>
+          <div className="row gap-12">
             <button className="s-menu-toggle" onClick={() => setOpen((o) => !o)} aria-label="Menu" type="button">
               ☰
             </button>
@@ -183,7 +187,7 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
               {subtitle ? <p>{subtitle}</p> : null}
             </div>
           </div>
-          <div className="row" style={{ gap: 12 }}>
+          <div className="row gap-12">
             {actions}
             <span className={`s-live ${live ? 'on' : ''}`} title={live ? 'Đang kết nối thời gian thực' : 'Đang kết nối...'}>
               <span className="dot" />

@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AsyncBlock } from '../../components/PageParts';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  api,
-  formatMoney,
-  timeAgo,
-  tokenStore,
-  useAsync,
-  useLiveStream,
-} from '../../api';
+import { api, tokenStore } from '../../lib/http';
+import { formatMoney, timeAgo } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
+import { useLiveStream } from '../../hooks/useLiveStream';
 import { useToast } from '../../components/Toast';
 import type { Dish, Order, OrderStatus } from '../../types';
 
@@ -124,11 +121,11 @@ function OptionModal({
             )}
             <div className="grow">
               <h3 style={{ fontSize: 16.5 }}>{dish.name}</h3>
-              <div className="c-price" style={{ marginTop: 3 }}>
+              <div className="c-price mt-3">
                 {formatMoney(dish.price)}
               </div>
               {dish.description ? (
-                <div className="small muted" style={{ marginTop: 4 }}>
+                <div className="small muted mt-4">
                   {dish.description}
                 </div>
               ) : null}
@@ -150,7 +147,7 @@ function OptionModal({
                 </span>
               </div>
               {g.description ? (
-                <div className="tiny muted" style={{ marginBottom: 8 }}>
+                <div className="tiny muted mb-8">
                   {g.description}
                 </div>
               ) : null}
@@ -192,7 +189,7 @@ function OptionModal({
             </div>
           ))}
 
-          <div className="field" style={{ marginBottom: 8 }}>
+          <div className="field mb-8">
             <label htmlFor="opt-note">Ghi chú cho nhà bếp (không bắt buộc)</label>
             <input
               id="opt-note"
@@ -224,10 +221,10 @@ function OptionModal({
               Vui lòng chọn: {missing.map((g) => g.name).join(', ')}
             </div>
           ) : null}
-          <div className="row" style={{ gap: 10 }}>
+          <div className="row gap-10">
             <div className="grow">
               <div className="tiny muted">Tạm tính</div>
-              <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--brand-dark)' }}>
+              <div className="total-label">
                 {formatMoney(unit * qty)}
               </div>
             </div>
@@ -363,10 +360,10 @@ function CartDrawer({
                 Gửi đơn cho nhà hàng
               </button>
               <button
-                className="btn btn-ghost btn-block btn-sm"
+                className="btn btn-ghost btn-block btn-sm mt-8"
                 onClick={onClear}
                 disabled={submitting}
-                style={{ marginTop: 8 }}
+
               >
                 Xoá tất cả món
               </button>
@@ -574,7 +571,7 @@ export function Menu() {
         <div className="c-join-card">
           <div className="c-join-logo">⚠️</div>
           <h1>Phiên bàn không còn hợp lệ</h1>
-          <p className="muted small" style={{ marginBottom: 18 }}>
+          <p className="muted small mb-18">
             {sessionState.error}
           </p>
           <button
@@ -624,7 +621,7 @@ export function Menu() {
       </header>
 
       <main className="c-menu">
-        <div className="c-search" style={{ marginTop: 14 }}>
+        <div className="c-search mt-14">
           <span className="ico">🔍</span>
           <input
             value={search}
@@ -647,17 +644,18 @@ export function Menu() {
           ))}
         </div>
 
-        {menu.loading ? (
-          <div className="loading-box">Đang tải thực đơn...</div>
-        ) : menu.error ? (
-          <div className="alert alert-error">{menu.error}</div>
-        ) : visible.length === 0 ? (
-          <div className="empty">
-            <div className="icon">🔍</div>
-            <div>Không tìm thấy món nào</div>
-            <div className="small">Thử tìm với từ khóa khác</div>
-          </div>
-        ) : (
+        <AsyncBlock
+          loading={menu.loading}
+          error={menu.error}
+          loadingText="Đang tải thực đơn..."
+          empty={visible.length === 0 ? (
+            <div className="empty">
+              <div className="icon">🔍</div>
+              <div>Không tìm thấy món nào</div>
+              <div className="small">Thử tìm với từ khóa khác</div>
+            </div>
+          ) : undefined}
+        >
           <div className="c-dish-grid">
             {visible.map((d) => (
               <button
@@ -678,17 +676,17 @@ export function Menu() {
                 <div className="c-dish-body">
                   <div className="c-dish-name">{d.name}</div>
                   {d.description ? <div className="c-dish-desc">{d.description}</div> : null}
-                  {d.option_groups?.length ? (
-                    <div>
-                      <span className="c-opt-flag">⚙ Tuỳ chọn thêm</span>
-                    </div>
-                  ) : null}
                   <div className="c-dish-foot">
                     <span className="c-price">
                       {formatMoney(d.price)} <small>đ</small>
                     </span>
+                    <span className="grow" />
+                    {d.option_groups?.length ? <span className="c-opt-flag">⚙ Tuỳ chọn</span> : null}
                     {!d.is_available ? null : (
-                      <span className="btn btn-sm" aria-hidden>
+                      /* Chỉ là dấu hiệu trang trí: cả thẻ đã là nút bấm, không nhúng
+                         <button> vào trong <button> (HTML không hợp lệ, trình đọc màn
+                         hình đọc hai nút chồng nhau). */
+                      <span className="c-dish-add" aria-hidden>
                         +
                       </span>
                     )}
@@ -697,7 +695,7 @@ export function Menu() {
               </button>
             ))}
           </div>
-        )}
+        </AsyncBlock>
       </main>
 
       {current && totalQty > 0 ? (
@@ -710,7 +708,7 @@ export function Menu() {
               <div className="strong">
                 {totalQty} món · {formatMoney(current.total)}
               </div>
-              <div className="tiny" style={{ color: 'var(--brand)' }}>
+              <div className="tiny brand-text">
                 Xem & gửi đơn →
               </div>
             </button>

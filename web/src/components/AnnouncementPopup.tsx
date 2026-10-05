@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, formatDateTime, tokenStore } from '../api';
+import { api, tokenStore } from '../lib/http';
+import { formatDateTime } from '../lib/format';
 import { useAnnouncementBadge } from './announcements';
 import { RichView } from './RichText';
 import type { AnnouncementWithRead } from '../types';
@@ -73,7 +74,7 @@ export function AnnouncementPopup() {
         <div className="modal-header">
           <div style={{ minWidth: 0 }}>
             <h3 style={{ fontSize: 17 }}>📢 {target.title}</h3>
-            <div className="tiny muted" style={{ marginTop: 3 }}>
+            <div className="tiny muted mt-3">
               {target.created_by_name ?? 'Admin'} · {formatDateTime(target.published_at)}
             </div>
           </div>
@@ -85,7 +86,7 @@ export function AnnouncementPopup() {
         <div className="modal-body">
           {target.image_url ? <img className="note-img" src={target.image_url} alt={target.title} /> : null}
           <RichView html={target.content} className="note-body" />
-          <div className="tiny muted" style={{ marginTop: 14 }}>
+          <div className="tiny muted mt-14">
             Nếu bạn đóng mà chưa bấm "Đã đọc", thông báo này vẫn nằm trong mục Thông báo và sẽ hiện lại ở
             lần đăng nhập kế tiếp.
           </div>

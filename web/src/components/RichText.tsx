@@ -120,7 +120,7 @@ export function RichEditor({ value, onChange, placeholder, minHeight = 200 }: Ed
       />
 
       {isEmpty && !focused ? (
-        <div className="tiny muted" style={{ marginTop: 4 }}>
+        <div className="tiny muted mt-4">
           {placeholder ?? 'Nhập nội dung thông báo...'}
         </div>
       ) : null}

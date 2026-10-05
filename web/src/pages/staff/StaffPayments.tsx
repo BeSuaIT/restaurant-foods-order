@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react';
-import { api, durationBetween, formatMoney, formatTime, tokenStore, useAsync, useLiveStream, useStaffAuth } from '../../api';
+import { AsyncBlock } from '../../components/PageParts';
+import { api, tokenStore } from '../../lib/http';
+import { durationBetween, formatMoney, formatTime } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
+import { useLiveStream } from '../../hooks/useLiveStream';
+import { useStaffAuth } from '../../hooks/useStaffAuth';
 import { ADMIN_SECTIONS, AppLayout, STAFF_SECTIONS } from '../../components/AppLayout';
 import { BillModal } from '../../components/BillModal';
 import { OrderItems, OrderTimeline } from '../../components/OrderBits';
@@ -133,8 +138,8 @@ export function StaffPayments() {
       actions={
         isAdmin ? (
           <select
-            className="input"
-            style={{ width: 200, padding: '7px 10px' }}
+            className="input code-input"
+            
             value={branchFilter === '' ? '' : String(branchFilter)}
             onChange={(e) => setBranchFilter(e.target.value === '' ? '' : Number(e.target.value))}
           >
@@ -157,17 +162,18 @@ export function StaffPayments() {
         </div>
       ) : null}
 
-      {state.loading ? (
-        <div className="loading-box">Đang tải hóa đơn...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">🎉</div>
-          <div className="strong">Tất cả hóa đơn đã được thanh toán</div>
-          <div className="small">Hóa đơn mới sẽ hiển thị ở đây</div>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải hóa đơn..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🎉</div>
+            <div className="strong">Tất cả hóa đơn đã được thanh toán</div>
+            <div className="small">Hóa đơn mới sẽ hiển thị ở đây</div>
+          </div>
+        ) : undefined}
+      >
         <>
           <div className="s-stats">
             <div className="s-stat">
@@ -191,32 +197,26 @@ export function StaffPayments() {
           {rows.map((o) => (
             <div className="o-card" key={o.id}>
               <div className="o-card-head">
-                <div className="row wrap" style={{ gap: 14 }}>
-                  <div>
-                    <div className="row" style={{ gap: 8 }}>
-                      <span className="badge badge-brand">🪑 {o.table_name ?? '—'}</span>
-                      {o.table_branch_name ? (
-                        <span className="badge">🏢 {o.table_branch_name}</span>
-                      ) : null}
-                      <span className="mono small strong">{o.order_no}</span>
-                      <span className={`badge ${o.status === 'served' ? 'badge-ok' : 'badge-info'}`}>
-                        {o.status === 'served' ? 'Đã phục vụ' : 'Đang chuẩn bị'}
-                      </span>
-                    </div>
-                    <div className="tiny muted" style={{ marginTop: 3 }}>
-                      👤 {o.customer_name} · ☎ {o.customer_phone} · 🕐 {formatTime(o.started_at)} · ⏱{' '}
-                      {durationBetween(o.started_at, null)}
-                    </div>
+                <div className="stack">
+                  <div className="o-card-title">
+                    <span className="badge badge-brand">🪑 {o.table_name ?? '—'}</span>
+                    {o.table_branch_name ? (
+                      <span className="badge">🏢 {o.table_branch_name}</span>
+                    ) : null}
+                    <span className="mono small strong">{o.order_no}</span>
+                    <span className={`badge ${o.status === 'served' ? 'badge-ok' : 'badge-info'}`}>
+                      {o.status === 'served' ? 'Đã phục vụ' : 'Đang chuẩn bị'}
+                    </span>
+                  </div>
+                  <div className="tiny muted o-card-sub">
+                    👤 {o.customer_name} · ☎ {o.customer_phone} · 🕐 {formatTime(o.started_at)} · ⏱{' '}
+                    {durationBetween(o.started_at, null)}
                   </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 21, fontWeight: 800, color: 'var(--brand-dark)' }}>
-                    {formatMoney(o.total)}
-                  </div>
+                <div className="o-card-sum">
+                  <div className="money">{formatMoney(o.total)}</div>
                   {Number(o.discount) > 0 ? (
-                    <div className="tiny" style={{ color: 'var(--danger)' }}>
-                      đã giảm {formatMoney(o.discount)}
-                    </div>
+                    <div className="cut">đã giảm {formatMoney(o.discount)}</div>
                   ) : null}
                 </div>
               </div>
@@ -224,7 +224,7 @@ export function StaffPayments() {
               <div className="o-card-body">
                 <OrderItems order={o} compact />
                 {o.received_by_name ? (
-                  <div className="tiny muted" style={{ marginTop: 10 }}>
+                  <div className="tiny muted mt-10">
                     👨‍🍳 NV nhận order: <strong>{o.received_by_name}</strong>
                   </div>
                 ) : null}
@@ -244,7 +244,7 @@ export function StaffPayments() {
             </div>
           ))}
         </>
-      )}
+      </AsyncBlock>
 
       {/* ---- Modal thanh toán ---- */}
       <Modal
@@ -347,7 +347,7 @@ export function StaffPayments() {
               ) : null}
 
               {discountNum > Number(pay.subtotal) ? (
-                <div className="tiny" style={{ color: 'var(--danger)' }}>
+                <div className="tiny danger-text">
                   Số tiền giảm không được vượt quá tạm tính.
                 </div>
               ) : null}
@@ -375,7 +375,7 @@ export function StaffPayments() {
               {detail.table_branch_name ? ` · 🏢 ${detail.table_branch_name}` : ''}
             </div>
             <OrderItems order={detail} />
-            <h4 style={{ fontSize: 14, margin: '18px 0 10px' }}>Nhật ký</h4>
+            <h4 className="sub-head">Nhật ký</h4>
             <OrderTimeline order={detail} />
           </>
         ) : null}

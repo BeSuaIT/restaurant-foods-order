@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { api, durationBetween, formatDateTime, formatMoney, useAsync } from '../../api';
+import { AsyncBlock } from '../../components/PageParts';
+import { api } from '../../lib/http';
+import { durationBetween, formatDateTime, formatMoney } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { BillModal } from '../../components/BillModal';
 import { OrderItems, OrderTimeline, StatusBadge } from '../../components/OrderBits';
@@ -179,14 +182,14 @@ export function AdminHistory() {
             ))}
           </select>
         </div>
-        <div className="field grow" style={{ maxWidth: 260 }}>
+        <div className="field grow history-search">
           <label htmlFor="hq">Tìm kiếm</label>
           <input
             id="hq"
             className="input"
             value={q}
             onChange={(e) => { setQ(e.target.value); setPage(0); }}
-            placeholder="Mã đơn, tên, SĐT, tên NV, mã giảm giá..."
+            placeholder="Mã đơn, tên, SĐT…"
           />
         </div>
       </div>
@@ -206,16 +209,17 @@ export function AdminHistory() {
         </div>
       </div>
 
-      {state.loading ? (
-        <div className="loading-box">Đang tải lịch sử...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">🧾</div>
-          <div>Không có đơn nào trong khoảng thời gian này</div>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải lịch sử..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🧾</div>
+            <div>Không có đơn nào trong khoảng thời gian này</div>
+          </div>
+        ) : undefined}
+      >
         <>
           <div className="table-wrap">
             <table className="tbl">
@@ -239,12 +243,12 @@ export function AdminHistory() {
                 {rows.map((o) => (
                   <tr key={o.id}>
                     <td className="mono tiny">{o.order_no}</td>
-                    <td>
+                    <td className="nowrap">
                       <strong>{o.table_code ?? '—'}</strong>
                       {o.table_area ? <div className="tiny muted">{o.table_area}</div> : null}
                     </td>
-                    <td className="tiny">{o.table_branch_name ?? <span className="muted">—</span>}</td>
-                    <td>
+                    <td className="tiny nowrap">{o.table_branch_name ?? <span className="muted">—</span>}</td>
+                    <td className="nowrap">
                       <div className="small strong">{o.customer_name}</div>
                       <div className="tiny muted">{o.customer_phone}</div>
                     </td>
@@ -255,7 +259,7 @@ export function AdminHistory() {
                     <td className="right strong nowrap">
                       {formatMoney(o.total)}
                       {Number(o.discount) > 0 ? (
-                        <div className="tiny" style={{ color: 'var(--danger)' }}>
+                        <div className="tiny danger-text">
                           {o.discount_code ? `${o.discount_code} · ` : ''}-{formatMoney(o.discount)}
                         </div>
                       ) : null}
@@ -276,8 +280,8 @@ export function AdminHistory() {
                         <span className="muted">—</span>
                       )}
                     </td>
-                    <td className="tiny">{o.received_by_name ?? <span className="muted">—</span>}</td>
-                    <td className="tiny">{o.paid_by_name ?? <span className="muted">—</span>}</td>
+                    <td className="tiny nowrap">{o.received_by_name ?? <span className="muted">-</span>}</td>
+                    <td className="tiny nowrap">{o.paid_by_name ?? <span className="muted">-</span>}</td>
                     <td className="right">
                       <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => openDetail(o)} type="button">
@@ -308,7 +312,7 @@ export function AdminHistory() {
             </div>
           </div>
         </>
-      )}
+      </AsyncBlock>
 
       {/* ---- Chi tiết đơn ---- */}
       <Modal open={!!detail} size="lg" title={detail?.order_no ?? ''} onClose={() => setDetail(null)}>
@@ -322,7 +326,7 @@ export function AdminHistory() {
               <span className="badge">☎ {detail.customer_phone}</span>
             </div>
 
-            <div className="o-meta" style={{ marginBottom: 14 }}>
+            <div className="o-meta mb-14">
               <div className="o-meta-item">
                 <span className="k">Bắt đầu order:</span>
                 <strong>{formatDateTime(detail.started_at)}</strong>
@@ -351,7 +355,7 @@ export function AdminHistory() {
               <div>
                 <strong style={{ fontSize: 16 }}>Tổng cộng</strong>
                 {Number(detail.discount) > 0 ? (
-                  <div className="tiny" style={{ color: 'var(--danger)' }}>
+                  <div className="tiny danger-text">
                     Tạm tính {formatMoney(detail.subtotal)} · giảm{' '}
                     {detail.discount_code ? `${detail.discount_code} ` : ''}
                     −{formatMoney(detail.discount)}
@@ -361,7 +365,7 @@ export function AdminHistory() {
               <strong style={{ fontSize: 22, color: 'var(--brand-dark)' }}>{formatMoney(detail.total)}</strong>
             </div>
 
-            <h4 style={{ fontSize: 14, margin: '18px 0 10px' }}>Nhật ký đầy đủ</h4>
+            <h4 className="sub-head">Nhật ký đầy đủ</h4>
             <OrderTimeline order={detail} />
 
             <div className="row" style={{ gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>

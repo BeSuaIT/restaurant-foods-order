@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { api, useAsync, useLiveStream, tokenStore } from '../../api';
+import { AsyncBlock, ModalFooter } from '../../components/PageParts';
+import { api, tokenStore } from '../../lib/http';
+import { useAsync } from '../../hooks/useAsync';
+import { useLiveStream } from '../../hooks/useLiveStream';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { RichEditor, RichView } from '../../components/RichText';
@@ -147,27 +150,28 @@ export function AdminAnnouncements() {
         </button>
       }
     >
-      {state.loading ? (
-        <div className="loading-box">Đang tải thông báo...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">📣</div>
-          <div className="strong">Chưa có thông báo nào</div>
-          <div className="small">
-            Dùng để thông báo sự kiện, thay đổi lịch, sự cố... cho toàn bộ nhân viên.
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải thông báo..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">📣</div>
+            <div className="strong">Chưa có thông báo nào</div>
+            <div className="small">
+              Dùng để thông báo sự kiện, thay đổi lịch, sự cố... cho toàn bộ nhân viên.
+            </div>
+            <button className="btn" onClick={() => setForm(emptyForm())} type="button">
+              ✚ Soạn thông báo đầu tiên
+            </button>
           </div>
-          <button className="btn" onClick={() => setForm(emptyForm())} type="button">
-            ✚ Soạn thông báo đầu tiên
-          </button>
-        </div>
-      ) : (
+        ) : undefined}
+      >
         <div className="note-list">
           {rows.map((a) => (
             <article className={`note admin ${a.is_published ? '' : 'unpublished'}`} key={a.id}>
               <div className="note-head static">
-                <div className="grow" style={{ minWidth: 0 }}>
+                <div className="grow minw-0">
                   <div className="note-title">
                     {a.title}
                     <span className={`badge ${a.is_published ? 'badge-success' : 'badge-muted'}`}>
@@ -211,7 +215,7 @@ export function AdminAnnouncements() {
             </article>
           ))}
         </div>
-      )}
+      </AsyncBlock>
 
       {/* ---------------- Modal soạn / sửa ---------------- */}
       <Modal
@@ -220,14 +224,12 @@ export function AdminAnnouncements() {
         onClose={() => setForm(null)}
         size="lg"
         footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setForm(null)} type="button">
-              Huỷ
-            </button>
-            <button className="btn" disabled={busy} onClick={() => void save()} type="button">
-              {busy ? 'Đang lưu...' : form?.is_published ? '📢 Đăng cho nhân viên' : '💾 Lưu nháp'}
-            </button>
-          </>
+          <ModalFooter
+            busy={busy}
+            onCancel={() => setForm(null)}
+            onConfirm={() => void save()}
+            confirmLabel={form?.is_published ? '📢 Đăng cho nhân viên' : '💾 Lưu nháp'}
+          />
         }
       >
         {form ? (

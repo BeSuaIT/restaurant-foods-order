@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { api, formatDateTime, useAsync } from '../../api';
+import { AsyncBlock, ModalFooter } from '../../components/PageParts';
+import { api } from '../../lib/http';
+import { formatDateTime } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
@@ -172,19 +175,20 @@ export function AdminDiscountCodes() {
         cho bill. Mã chỉ dùng được trong khoảng thời gian bạn đặt.
       </div>
 
-      {state.loading ? (
-        <div className="loading-box">Đang tải...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">🎟️</div>
-          <div>Chưa có mã giảm giá nào</div>
-          <button className="btn" style={{ marginTop: 14 }} onClick={() => setForm(emptyForm())} type="button">
-            + Tạo mã đầu tiên
-          </button>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🎟️</div>
+            <div>Chưa có mã giảm giá nào</div>
+            <button className="btn mt-14" onClick={() => setForm(emptyForm())} type="button">
+              + Tạo mã đầu tiên
+            </button>
+          </div>
+        ) : undefined}
+      >
         <div className="table-wrap">
           <table className="tbl">
             <thead>
@@ -213,12 +217,11 @@ export function AdminDiscountCodes() {
                     <td className="right">
                       <span className="badge badge-brand">-{d.percent}%</span>
                     </td>
-                    <td className="small muted">{d.start_at ? formatDateTime(d.start_at) : 'Không giới hạn'}</td>
-                    <td className="small muted">{d.end_at ? formatDateTime(d.end_at) : 'Không giới hạn'}</td>
+                    <td className="small muted nowrap">{d.start_at ? formatDateTime(d.start_at) : 'Không giới hạn'}</td>
+                    <td className="small muted nowrap">{d.end_at ? formatDateTime(d.end_at) : 'Không giới hạn'}</td>
                     <td className="right">
                       <span
-                        className={isExhausted(d) ? 'strong' : ''}
-                        style={isExhausted(d) ? { color: 'var(--danger-ink, var(--danger))' } : undefined}
+                        className={isExhausted(d) ? 'strong danger-text' : ''}
                         title={d.usage_limit == null ? 'Không giới hạn số lần dùng' : undefined}
                       >
                         {d.used_count}
@@ -233,7 +236,7 @@ export function AdminDiscountCodes() {
                       <span className={`badge ${s.cls}`}>{s.label}</span>
                     </td>
                     <td>
-                      <div className="row" style={{ gap: 5, justifyContent: 'flex-end' }}>
+                      <div className="row row-end">
                         <button
                           className="btn btn-ghost btn-sm"
                           onClick={() => {
@@ -258,8 +261,8 @@ export function AdminDiscountCodes() {
                           {d.is_active ? 'Tắt' : 'Bật'}
                         </button>
                         <button
-                          className="btn btn-ghost btn-sm"
-                          style={{ color: 'var(--danger)' }}
+                          className="btn btn-ghost btn-sm danger-text"
+
                           onClick={() => setDeleting(d)}
                           type="button"
                         >
@@ -273,24 +276,14 @@ export function AdminDiscountCodes() {
             </tbody>
           </table>
         </div>
-      )}
+      </AsyncBlock>
 
       {/* ---- Form mã giảm giá ---- */}
       <Modal
         open={!!form}
         title={form?.id ? `Sửa mã: ${form.code}` : 'Thêm mã giảm giá'}
         onClose={() => setForm(null)}
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setForm(null)} disabled={busy} type="button">
-              Huỷ
-            </button>
-            <button className="btn" onClick={save} disabled={busy} type="button">
-              {busy && <span className="spinner" />}
-              {form?.id ? 'Lưu' : 'Tạo mã'}
-            </button>
-          </>
-        }
+        footer={<ModalFooter onCancel={() => setForm(null)} onConfirm={save} busy={busy} confirmLabel={form?.id ? 'Lưu' : 'Tạo mã'} />}
       >
         {form ? (
           <>
@@ -344,13 +337,13 @@ export function AdminDiscountCodes() {
                 value={form.usage_limit}
                 onChange={(e) => setForm({ ...form, usage_limit: Number(e.target.value) })}
               />
-              <div className="tiny muted" style={{ marginTop: 4 }}>
+              <div className="tiny muted mt-4">
                 Để <strong>0</strong> = không giới hạn. Mỗi lần nhân viên áp mã vào một hóa đơn đã thanh
                 toán sẽ tăng 1. Hết lượt thì mã báo &quot;đã hết lượt sử dụng&quot;.
               </div>
             </div>
 
-            <div className="row" style={{ gap: 12 }}>
+            <div className="row gap-12">
               <div className="field grow">
                 <label htmlFor="ds">Bắt đầu áp dụng</label>
                 <input
@@ -397,7 +390,7 @@ export function AdminDiscountCodes() {
         message={
           <div>
             Xoá mã <strong>{deleting?.code}</strong>?
-            <div className="small muted" style={{ marginTop: 8 }}>
+            <div className="small muted mt-8">
               Nếu mã đã dùng trên hóa đơn, hệ thống sẽ ngừng hoạt động mã thay vì xoá hẳn.
             </div>
           </div>

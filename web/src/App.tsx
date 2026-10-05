@@ -14,7 +14,8 @@ import { StaffPayments } from './pages/staff/StaffPayments';
 import { StaffTables } from './pages/staff/StaffTables';
 import { StaffNotifications } from './pages/staff/StaffNotifications';
 
-import { AdminDashboard, AdminReports } from './pages/admin/AdminDashboard';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { AdminReports } from './pages/admin/AdminReports';
 import { AdminUsers } from './pages/admin/AdminUsers';
 import { AdminDishes } from './pages/admin/AdminDishes';
 import { AdminOptionGroups } from './pages/admin/AdminOptionGroups';
@@ -40,7 +41,7 @@ function NotFound() {
       <div className="c-join-card">
         <div className="c-join-logo">🤔</div>
         <h1>Không tìm thấy trang</h1>
-        <p className="muted small" style={{ marginBottom: 18 }}>
+        <p className="muted small mb-18">
           Đường dẫn bạn truy cập không tồn tại.
         </p>
         <a className="btn btn-block btn-lg" href="/">

@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
+import { AsyncBlock } from '../../components/PageParts';
 import { Link } from 'react-router-dom';
-import { api, formatMoney, timeAgo, tokenStore, useAsync, useLiveStream, useStaffAuth } from '../../api';
+import { api, tokenStore } from '../../lib/http';
+import { formatMoney, timeAgo } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
+import { useLiveStream } from '../../hooks/useLiveStream';
+import { useStaffAuth } from '../../hooks/useStaffAuth';
 import { ADMIN_SECTIONS, AppLayout, STAFF_SECTIONS } from '../../components/AppLayout';
 import { BillModal } from '../../components/BillModal';
 import { StatusBadge } from '../../components/OrderBits';
@@ -68,8 +73,8 @@ export function StaffTables() {
       actions={
         isAdmin ? (
           <select
-            className="input"
-            style={{ width: 200, padding: '7px 10px' }}
+            className="input code-input"
+            
             value={branchFilter === '' ? '' : String(branchFilter)}
             onChange={(e) => setBranchFilter(e.target.value === '' ? '' : Number(e.target.value))}
           >
@@ -92,16 +97,17 @@ export function StaffTables() {
         </div>
       ) : null}
 
-      {tables.loading ? (
-        <div className="loading-box">Đang tải...</div>
-      ) : tables.error ? (
-        <div className="alert alert-error">{tables.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">🪑</div>
-          <div>Chưa có bàn nào</div>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={tables.loading}
+        error={tables.error}
+        loadingText="Đang tải..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🪑</div>
+            <div>Chưa có bàn nào</div>
+          </div>
+        ) : undefined}
+      >
         <div className="t-grid">
           {rows.map((t) => {
             const list = byTable.get(t.id) ?? [];
@@ -120,7 +126,7 @@ export function StaffTables() {
                 </div>
 
                 {list.length === 0 ? (
-                  <div className="badge" style={{ marginTop: 10 }}>
+                  <div className="badge mt-10">
                     Trống
                   </div>
                 ) : (
@@ -158,7 +164,7 @@ export function StaffTables() {
             );
           })}
         </div>
-      )}
+      </AsyncBlock>
 
       {/* Danh sách đơn theo bàn */}
       {openOrders.length > 0 ? (
@@ -168,7 +174,7 @@ export function StaffTables() {
             <span className="badge">{openOrders.length} đơn</span>
           </div>
           <div className="s-panel-body flush">
-            <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+            <div className="table-wrap flush">
               <table className="tbl">
                 <thead>
                   <tr>

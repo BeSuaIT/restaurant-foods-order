@@ -1,5 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
-import { api, formatMoney, tokenStore, useAsync, useLiveStream } from '../../api';
+import { AsyncBlock, ModalFooter } from '../../components/PageParts';
+import { api, tokenStore } from '../../lib/http';
+import { formatMoney } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
+import { useLiveStream } from '../../hooks/useLiveStream';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
@@ -214,19 +218,20 @@ export function AdminDishes() {
         </div>
       </div>
 
-      {dishes.loading ? (
-        <div className="loading-box">Đang tải...</div>
-      ) : dishes.error ? (
-        <div className="alert alert-error">{dishes.error}</div>
-      ) : visible.length === 0 ? (
-        <div className="empty">
-          <div className="icon">🍽️</div>
-          <div>Chưa có món nào</div>
-          <button className="btn" style={{ marginTop: 14 }} onClick={() => setForm(emptyDish())} type="button">
-            + Thêm món đầu tiên
-          </button>
-        </div>
-      ) : (
+      <AsyncBlock
+        loading={dishes.loading}
+        error={dishes.error}
+        loadingText="Đang tải..."
+        empty={visible.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🍽️</div>
+            <div>Chưa có món nào</div>
+            <button className="btn mt-14" onClick={() => setForm(emptyDish())} type="button">
+              + Thêm món đầu tiên
+            </button>
+          </div>
+        ) : undefined}
+      >
         <div className="d-grid">
           {visible.map((d) => (
             <div key={d.id} className={`d-card ${!d.is_active || !d.is_available ? 'd-off' : ''}`}>
@@ -277,14 +282,14 @@ export function AdminDishes() {
                 <button className="btn btn-ghost btn-sm" onClick={() => void toggleAvail(d)} type="button">
                   {d.is_available ? 'Hết món' : 'Có món'}
                 </button>
-                <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setDeleting(d)} type="button">
+                <button className="btn btn-ghost btn-sm danger-text" onClick={() => setDeleting(d)} type="button">
                   Xoá
                 </button>
               </div>
             </div>
           ))}
         </div>
-      )}
+      </AsyncBlock>
 
       {/* ---- Form món ---- */}
       <Modal
@@ -292,17 +297,7 @@ export function AdminDishes() {
         size="lg"
         title={form?.id ? `Sửa món: ${form.name}` : 'Thêm món ăn'}
         onClose={() => setForm(null)}
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setForm(null)} disabled={busy} type="button">
-              Huỷ
-            </button>
-            <button className="btn" onClick={save} disabled={busy} type="button">
-              {busy && <span className="spinner" />}
-              {form?.id ? 'Lưu' : 'Thêm món'}
-            </button>
-          </>
-        }
+        footer={<ModalFooter onCancel={() => setForm(null)} onConfirm={save} busy={busy} confirmLabel={form?.id ? 'Lưu' : 'Thêm món'} />}
       >
         {form ? (
           <>
@@ -357,9 +352,9 @@ export function AdminDishes() {
                     🍽️
                   </div>
                 )}
-                <div className="col grow" style={{ gap: 6 }}>
+                <div className="col grow gap-6">
                   <input className="input" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="Đường dẫn ảnh (URL)" />
-                  <div className="row" style={{ gap: 6 }}>
+                  <div className="row gap-6">
                     <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={busy} type="button">
                       📤 Tải ảnh lên
                     </button>
@@ -417,7 +412,7 @@ export function AdminDishes() {
                   (VD: “Nhân thêm”, “Sốt chấm”).
                 </div>
               ) : (
-                <div className="col" style={{ gap: 6 }}>
+                <div className="col gap-6">
                   {groupList.map((g) => {
                     const on = form.option_group_ids.includes(g.id);
                     return (
@@ -468,7 +463,7 @@ export function AdminDishes() {
         message={
           <div>
             Xoá món <strong>{deleting?.name}</strong>?
-            <div className="small muted" style={{ marginTop: 8 }}>
+            <div className="small muted mt-8">
               Nếu món đã từng được order, hệ thống sẽ <strong>ẩn khỏi menu</strong> thay vì xoá để giữ nguyên lịch sử.
             </div>
           </div>

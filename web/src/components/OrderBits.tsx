@@ -1,4 +1,4 @@
-import { formatMoney } from '../api';
+import { formatMoney } from '../lib/format';
 import { EVENT_LABEL, PAYMENT_LABEL, STATUS_LABEL, STATUS_TONE, type Order, type OrderStatus } from '../types';
 
 export function StatusBadge({ status, className = '' }: { status: OrderStatus; className?: string }) {
@@ -56,7 +56,7 @@ export function OrderTotals({ order }: { order: Order }) {
       {Number(order.discount) > 0 ? (
         <div className="o-line">
           <span className="muted small">Giảm trừ</span>
-          <span className="o-line-price" style={{ color: 'var(--danger)' }}>
+          <span className="o-line-price danger-text">
             −{formatMoney(order.discount)}
           </span>
         </div>
@@ -94,12 +94,12 @@ export function OrderTimeline({ order }: { order: Order }) {
                 {e.actor_type === 'staff' || e.actor_type === 'admin' ? ' (nhân viên)' : e.actor_type === 'customer' ? ' (khách)' : ''}
               </div>
               {typeof e.detail?.reason === 'string' && e.detail.reason ? (
-                <div className="tiny" style={{ color: 'var(--danger)', marginTop: 3 }}>
+                <div className="tiny danger-text mt-3">
                   Lý do: {e.detail.reason}
                 </div>
               ) : null}
               {e.to_status === 'paid' && e.detail?.method ? (
-                <div className="tiny muted" style={{ marginTop: 3 }}>
+                <div className="tiny muted mt-3">
                   Hình thức: {PAYMENT_LABEL[e.detail.method as 'cash' | 'transfer'] ?? String(e.detail.method)}
                   {Number(e.detail.discount) > 0 ? ` · Giảm ${formatMoney(Number(e.detail.discount))}` : ''}
                 </div>

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, tokenStore } from '../../api';
-
+import { api, tokenStore } from '../../lib/http';
 /** Trang chủ: khách nhập mã bàn hoặc quét QR. */
 export function Landing() {
   const [code, setCode] = useState('');
@@ -50,8 +49,8 @@ export function Landing() {
               </Link>
             </div>
             <button
-              className="btn btn-secondary btn-sm"
-              style={{ marginTop: 10 }}
+              className="btn btn-secondary btn-sm mt-10"
+
               onClick={() => {
                 if (
                   window.confirm(
@@ -117,7 +116,7 @@ export function Landing() {
           </ol>
         </div>
 
-        <div className="row" style={{ justifyContent: 'center', marginTop: 22, gap: 16 }}>
+        <div className="row c-foot-links">
           <Link className="small muted" to="/staff">
             👨‍🍳 Nhân viên
           </Link>

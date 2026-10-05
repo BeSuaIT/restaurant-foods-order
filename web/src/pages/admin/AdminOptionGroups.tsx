@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { api, formatMoney, useAsync } from '../../api';
+import { AsyncBlock, ModalFooter } from '../../components/PageParts';
+import { api } from '../../lib/http';
+import { formatMoney } from '../../lib/format';
+import { useAsync } from '../../hooks/useAsync';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
@@ -146,20 +149,21 @@ export function AdminOptionGroups() {
         <a href="/admin/dishes">Quản lý món ăn</a>.
       </div>
 
-      {state.loading ? (
-        <div className="loading-box">Đang tải...</div>
-      ) : state.error ? (
-        <div className="alert alert-error">{state.error}</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="icon">⚙️</div>
-          <div>Chưa có nhóm lựa chọn nào</div>
-          <button className="btn" style={{ marginTop: 14 }} onClick={() => setForm(emptyGroup())} type="button">
-            + Tạo nhóm đầu tiên
-          </button>
-        </div>
-      ) : (
-        rows.map((g) => (
+      <AsyncBlock
+        loading={state.loading}
+        error={state.error}
+        loadingText="Đang tải..."
+        empty={rows.length === 0 ? (
+          <div className="empty">
+            <div className="icon">⚙️</div>
+            <div>Chưa có nhóm lựa chọn nào</div>
+            <button className="btn mt-14" onClick={() => setForm(emptyGroup())} type="button">
+              + Tạo nhóm đầu tiên
+            </button>
+          </div>
+        ) : undefined}
+      >
+        {rows.map((g) => (
           <div className="g-card" key={g.id}>
             <div className="g-card-head">
               <div>
@@ -177,12 +181,12 @@ export function AdminOptionGroups() {
                   )}
                 </div>
                 {g.description ? (
-                  <div className="tiny muted" style={{ marginTop: 3 }}>
+                  <div className="tiny muted mt-3">
                     {g.description}
                   </div>
                 ) : null}
               </div>
-              <div className="row" style={{ gap: 6 }}>
+              <div className="row gap-6">
                 <button
                   className="btn btn-ghost btn-sm"
                   onClick={() =>
@@ -209,7 +213,7 @@ export function AdminOptionGroups() {
                 >
                   Sửa
                 </button>
-                <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setDeleting(g)} type="button">
+                <button className="btn btn-ghost btn-sm danger-text" onClick={() => setDeleting(g)} type="button">
                   Xoá
                 </button>
               </div>
@@ -218,7 +222,7 @@ export function AdminOptionGroups() {
               {g.items.length === 0 ? (
                 <div className="muted small">Nhóm chưa có lựa chọn nào.</div>
               ) : (
-                <div className="row wrap" style={{ gap: 6 }}>
+                <div className="row wrap gap-6">
                   {g.items.map((i) => (
                     <span key={i.id} className={`badge ${i.is_active ? '' : 'badge-danger'}`} style={{ padding: '5px 10px' }}>
                       {i.is_default ? '⭐ ' : ''}
@@ -232,8 +236,8 @@ export function AdminOptionGroups() {
               )}
             </div>
           </div>
-        ))
-      )}
+        ))}
+      </AsyncBlock>
 
       {/* ---- Form nhóm ---- */}
       <Modal
@@ -242,15 +246,12 @@ export function AdminOptionGroups() {
         title={form?.id ? `Sửa nhóm: ${form.name}` : 'Thêm nhóm lựa chọn'}
         onClose={() => setForm(null)}
         footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setForm(null)} disabled={busy} type="button">
-              Huỷ
-            </button>
-            <button className="btn" onClick={save} disabled={busy} type="button">
-              {busy && <span className="spinner" />}
-              {form?.id ? 'Lưu' : 'Tạo nhóm'}
-            </button>
-          </>
+          <ModalFooter
+            busy={busy}
+            onCancel={() => setForm(null)}
+            onConfirm={save}
+            confirmLabel={form?.id ? 'Lưu' : 'Tạo nhóm'}
+          />
         }
       >
         {form ? (
@@ -297,7 +298,7 @@ export function AdminOptionGroups() {
               </div>
             </div>
 
-            <div className="row" style={{ gap: 12 }}>
+            <div className="row gap-12">
               <div className="field grow">
                 <label htmlFor="gmin">Số lượng tối thiểu</label>
                 <input id="gmin" className="input" type="number" min={0} value={form.min_select} onChange={(e) => setForm({ ...form, min_select: Number(e.target.value) })} />
@@ -357,8 +358,8 @@ export function AdminOptionGroups() {
                       Mặc định
                     </label>
                     <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ color: 'var(--danger)' }}
+                      className="btn btn-ghost btn-sm danger-text"
+
                       onClick={() => setForm({ ...form, items: form.items.filter((_, i) => i !== idx) })}
                       type="button"
                       title="Xoá lựa chọn"
@@ -368,10 +369,10 @@ export function AdminOptionGroups() {
                   </div>
                 ))}
               </div>
-              <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setForm({ ...form, items: [...form.items, newItem()] })} type="button">
+              <button className="btn btn-ghost btn-sm mt-8" onClick={() => setForm({ ...form, items: [...form.items, newItem()] })} type="button">
                 + Thêm lựa chọn
               </button>
-              <div className="tiny muted" style={{ marginTop: 6 }}>
+              <div className="tiny muted mt-6">
                 Ô giá là số tiền <strong>cộng thêm</strong> (VD: 15000 = +15.000đ). Ghi 0 nếu miễn phí.
               </div>
             </div>
@@ -389,7 +390,7 @@ export function AdminOptionGroups() {
           <div>
             Xoá nhóm <strong>{deleting?.name}</strong> và {deleting?.items.length} lựa chọn?
             {deleting && deleting.dish_count > 0 ? (
-              <div className="small" style={{ color: 'var(--danger)', marginTop: 8 }}>
+              <div className="small danger-text mt-8">
                 ⚠️ Nhóm này đang được gán cho {deleting.dish_count} món. Hãy gỡ khỏi các món đó trước.
               </div>
             ) : null}

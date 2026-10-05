@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, isValidVnPhone, tokenStore } from '../../api';
+import { api, tokenStore } from '../../lib/http';
+import { isValidVnPhone } from '../../lib/phone';
 import { useToast } from '../../components/Toast';
 
 /** Bước sau khi quét QR: nhập tên + số điện thoại. */
@@ -87,7 +88,7 @@ export function Join() {
           </div>
         ) : table ? (
           <>
-            <div className="c-table-chip" style={{ marginTop: 18 }}>
+            <div className="c-table-chip mt-18">
               🪑 {table.name}
               {table.area ? ` · ${table.area}` : ''}
             </div>
