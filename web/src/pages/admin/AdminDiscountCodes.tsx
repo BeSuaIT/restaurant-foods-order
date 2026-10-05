@@ -17,6 +17,10 @@ interface FormState {
   code: string;
   description: string;
   percent: number;
+  /** Số lần sử dụng tối đa; 0 = không giới hạn */
+  usage_limit: number;
+  /** Đã dùng bao nhiêu lần (chỉ để kiểm tra khi sửa) */
+  used_count?: number;
   /** yyyy-MM-dd */
   start_date: string;
   end_date: string;
@@ -30,6 +34,7 @@ const emptyForm = (): FormState => ({
   code: '',
   description: '',
   percent: 10,
+  usage_limit: 0,
   start_date: todayStr(),
   end_date: plusDays(90),
   is_active: true,
@@ -38,12 +43,17 @@ const emptyForm = (): FormState => ({
 /** Ngày trong DB -> yyyy-MM-dd (để đưa vào <input type="date">) */
 const toDateInput = (iso: string | null): string => (iso ? iso.slice(0, 10) : '');
 
-/** Trạng thái hiển thị dựa trên cờ + mốc thời gian */
+/** Đã hết lượt sử dụng chưa */
+const isExhausted = (d: Pick<DiscountCode, 'usage_limit' | 'used_count'>): boolean =>
+  d.usage_limit != null && Number(d.used_count) >= Number(d.usage_limit);
+
+/** Trạng thái hiển thị dựa trên cờ + mốc thời gian + số lần dùng */
 function codeState(d: DiscountCode): { label: string; cls: string } {
   if (!d.is_active) return { label: 'Đã tắt', cls: '' };
   const now = Date.now();
   if (d.start_at && new Date(d.start_at).getTime() > now) return { label: 'Chưa tới hạn', cls: 'badge-info' };
   if (d.end_at && new Date(d.end_at).getTime() < now) return { label: 'Đã hết hạn', cls: 'badge-danger' };
+  if (isExhausted(d)) return { label: 'Đã hết lượt', cls: 'badge-danger' };
   return { label: 'Đang áp dụng', cls: 'badge-ok' };
 }
 
@@ -63,9 +73,16 @@ export function AdminDiscountCodes() {
 
     const code = form.code.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     const percent = Number(form.percent);
+    const usageLimit = Number(form.usage_limit) || 0;
     if (code.length < 2) return setErrors(['Mã giảm giá tối thiểu 2 ký tự.']);
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
       return setErrors(['Phần trăm giảm phải từ 0 đến 100.']);
+    }
+    if (usageLimit < 0) return setErrors(['Số lần sử dụng không được âm.']);
+    if (form.id && usageLimit > 0 && usageLimit < (form.used_count ?? 0)) {
+      return setErrors([
+        `Mã này đã dùng ${form.used_count} lần, không thể đặt giới hạn thấp hơn số đó.`,
+      ]);
     }
     if (form.end_date && form.start_date && form.end_date < form.start_date) {
       return setErrors(['Ngày kết thúc phải sau ngày bắt đầu.']);
@@ -77,6 +94,7 @@ export function AdminDiscountCodes() {
         code,
         description: form.description.trim() || null,
         percent,
+        usage_limit: usageLimit > 0 ? usageLimit : null,
         start_at: form.start_date || null,
         end_at: form.end_date || null,
         is_active: form.is_active,
@@ -103,6 +121,7 @@ export function AdminDiscountCodes() {
         code: d.code,
         description: d.description,
         percent: d.percent,
+        usage_limit: d.usage_limit,
         start_at: d.start_at,
         end_at: d.end_at,
         is_active: !d.is_active,
@@ -196,7 +215,20 @@ export function AdminDiscountCodes() {
                     </td>
                     <td className="small muted">{d.start_at ? formatDateTime(d.start_at) : 'Không giới hạn'}</td>
                     <td className="small muted">{d.end_at ? formatDateTime(d.end_at) : 'Không giới hạn'}</td>
-                    <td className="right">{d.used_count}</td>
+                    <td className="right">
+                      <span
+                        className={isExhausted(d) ? 'strong' : ''}
+                        style={isExhausted(d) ? { color: 'var(--danger-ink, var(--danger))' } : undefined}
+                        title={d.usage_limit == null ? 'Không giới hạn số lần dùng' : undefined}
+                      >
+                        {d.used_count}
+                        {d.usage_limit == null ? (
+                          <span className="muted"> / ∞</span>
+                        ) : (
+                          <span className="muted"> / {d.usage_limit}</span>
+                        )}
+                      </span>
+                    </td>
                     <td>
                       <span className={`badge ${s.cls}`}>{s.label}</span>
                     </td>
@@ -210,6 +242,8 @@ export function AdminDiscountCodes() {
                               code: d.code,
                               description: d.description ?? '',
                               percent: d.percent,
+                              usage_limit: d.usage_limit ?? 0,
+                              used_count: d.used_count,
                               start_date: toDateInput(d.start_at),
                               end_date: toDateInput(d.end_at),
                               is_active: d.is_active,
@@ -297,6 +331,23 @@ export function AdminDiscountCodes() {
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="VD: Giảm 10% cho đơn từ 100.000đ"
               />
+            </div>
+
+            <div className="field">
+              <label htmlFor="du">Số lần sử dụng tối đa</label>
+              <input
+                id="du"
+                className="input"
+                type="number"
+                min={0}
+                max={1000000}
+                value={form.usage_limit}
+                onChange={(e) => setForm({ ...form, usage_limit: Number(e.target.value) })}
+              />
+              <div className="tiny muted" style={{ marginTop: 4 }}>
+                Để <strong>0</strong> = không giới hạn. Mỗi lần nhân viên áp mã vào một hóa đơn đã thanh
+                toán sẽ tăng 1. Hết lượt thì mã báo &quot;đã hết lượt sử dụng&quot;.
+              </div>
             </div>
 
             <div className="row" style={{ gap: 12 }}>

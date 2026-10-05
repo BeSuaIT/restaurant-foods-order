@@ -15,12 +15,13 @@ export function StaffOrders() {
   const toast = useToast();
   const { user } = useStaffAuth();
   const isAdmin = user?.role === 'admin';
-  const [tab, setTab] = useState<'pending' | 'all'>('pending');
+  const [tab, setTab] = useState<'pending' | 'draft' | 'all'>('pending');
   const [busy, setBusy] = useState<string | null>(null);
   const [detail, setDetail] = useState<Order | null>(null);
   const [rejecting, setRejecting] = useState<Order | null>(null);
   const [reason, setReason] = useState('');
   const [billNo, setBillNo] = useState<string | null>(null);
+  const [deletingDraft, setDeletingDraft] = useState<Order | null>(null);
 
   const [branchFilter, setBranchFilter] = useState<'' | number>('');
   const branches = useAsync<Branch[]>(
@@ -39,11 +40,17 @@ export function StaffOrders() {
     (signal) => api.get<OrderList>(`/staff/orders?limit=200${qs}`, { signal }),
     [qs],
   );
+  // Đơn chưa gửi món (khách quét QR xong nhưng bỏ đi) — xem mục ĐƠN NHÁP bên dưới
+  const drafts = useAsync<OrderList>(
+    (signal) => api.get<OrderList>(`/staff/orders/drafts${qs}`, { signal }),
+    [qs],
+  );
 
   useLiveStream(tokenStore.getStaffToken(), (e) => {
     if (e.type.startsWith('order.')) {
       state.reload();
       all.reload();
+      drafts.reload();
       if (detail && (e as { orderNo?: string }).orderNo === detail.order_no) {
         api.get<Order>(`/staff/orders/${detail.order_no}`).then(setDetail).catch(() => undefined);
       }
@@ -76,14 +83,15 @@ export function StaffOrders() {
   };
 
   const pendingList = (state.data?.rows ?? []).filter((o) => o.status === 'pending');
-  const rows = tab === 'pending' ? pendingList : (all.data?.rows ?? []);
+  const draftList = drafts.data?.rows ?? [];
+  const rows = tab === 'pending' ? pendingList : tab === 'draft' ? draftList : (all.data?.rows ?? []);
 
   return (
     <AppLayout
       role="staff"
       sections={isAdmin ? ADMIN_SECTIONS : STAFF_SECTIONS}
       title="Danh sách Order"
-      subtitle={`${pendingList.length} đơn đang chờ xác nhận`}
+      subtitle={`${pendingList.length} đơn đang chờ xác nhận${draftList.length ? ` · ${draftList.length} đơn chưa order` : ''}`}
       actions={
         isAdmin ? (
           <select
@@ -115,22 +123,48 @@ export function StaffOrders() {
         <button className={`s-tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')} type="button">
           🕐 Chờ xác nhận {pendingList.length > 0 ? `(${pendingList.length})` : ''}
         </button>
+        <button
+          className={`s-tab ${tab === 'draft' ? 'active' : ''}`}
+          onClick={() => setTab('draft')}
+          title="Khách đã quét QR + nhập tên nhưng chưa gửi món. Xoá ở đây để dọn, hệ thống cũng tự xoá sau 24h."
+          type="button"
+        >
+          🗂 Đơn chưa order {draftList.length > 0 ? `(${draftList.length})` : ''}
+        </button>
         <button className={`s-tab ${tab === 'all' ? 'active' : ''}`} onClick={() => setTab('all')} type="button">
           Tất cả đơn
         </button>
       </div>
 
-      {(tab === 'pending' ? state.loading : all.loading) ? (
+      {tab === 'draft' ? (
+        <div className="alert alert-info" style={{ marginBottom: 14 }}>
+          ℹ️ Đây là các phiên khách <strong>đã quét QR và nhập tên/SĐT nhưng chưa gửi món</strong> (quét nhầm, điện
+          thoại hết pin, khách bỏ đi...). Bạn có thể <strong>xoá</strong> để dọn sạch; hệ thống cũng tự động xoá các
+          đơn này sau <strong>24 giờ</strong> kể từ lúc tạo.
+        </div>
+      ) : null}
+
+      {(tab === 'pending' ? state.loading : tab === 'draft' ? drafts.loading : all.loading) ? (
         <div className="loading-box">Đang tải danh sách order...</div>
       ) : (
         <>
-          {state.error || all.error ? <div className="alert alert-error">{state.error ?? all.error}</div> : null}
+          {state.error || all.error || drafts.error ? (
+            <div className="alert alert-error">{state.error ?? all.error ?? drafts.error}</div>
+          ) : null}
 
           {rows.length === 0 ? (
             <div className="empty">
-              <div className="icon">{tab === 'pending' ? '✅' : '📭'}</div>
-              <div className="strong">{tab === 'pending' ? 'Không có đơn chờ xác nhận' : 'Chưa có đơn nào'}</div>
-              <div className="small">Đơn của khách sẽ xuất hiện ở đây ngay khi khách gửi</div>
+              <div className="icon">{tab === 'pending' ? '✅' : tab === 'draft' ? '🗂' : '📭'}</div>
+              <div className="strong">
+                {tab === 'pending' ? 'Không có đơn chờ xác nhận' : tab === 'draft' ? 'Không có đơn chưa order' : 'Chưa có đơn nào'}
+              </div>
+              <div className="small">
+                {tab === 'pending'
+                  ? 'Đơn của khách sẽ xuất hiện ở đây ngay khi khách gửi'
+                  : tab === 'draft'
+                    ? 'Tất cả phiên khách đều đã gửi món hoặc đã được dọn.'
+                    : 'Đơn của khách sẽ xuất hiện ở đây ngay khi khách gửi'}
+              </div>
             </div>
           ) : (
             rows.map((o) => (
@@ -222,6 +256,17 @@ export function StaffOrders() {
                   <button className="btn btn-secondary btn-sm" onClick={() => setBillNo(o.order_no)} type="button">
                     🧾 Xem bill
                   </button>
+
+                  {o.status === 'draft' ? (
+                    <button
+                      className="btn btn-danger btn-sm"
+                      disabled={busy === o.order_no + 'draft'}
+                      onClick={() => setDeletingDraft(o)}
+                      type="button"
+                    >
+                      {busy === o.order_no + 'draft' ? <span className="spinner" /> : '🗑'} Xoá đơn chưa order
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))
@@ -300,6 +345,44 @@ export function StaffOrders() {
           setReason('');
         }}
         onConfirm={() => rejecting && act(rejecting, 'reject', 'Đã huỷ đơn')}
+      />
+
+      {/* Xoá đơn chưa gửi món (draft) */}
+      <ConfirmDialog
+        open={!!deletingDraft}
+        danger
+        title="Xoá đơn chưa order?"
+        confirmLabel="🗑 Xoá đơn"
+        busy={busy === deletingDraft?.order_no + 'draft'}
+        message={
+          <div>
+            <p>
+              Xoá phiên <strong className="mono">{deletingDraft?.order_no}</strong> của bàn{' '}
+              <strong>{deletingDraft?.table_name}</strong> — {deletingDraft?.customer_name} (
+              {deletingDraft?.customer_phone})?
+            </p>
+            <p className="small muted" style={{ marginTop: 8 }}>
+              Khách chưa gửi món nên xoá không ảnh hưởng đơn thật. Nếu khách đang mở trình duyệt trên bàn, họ sẽ
+              được tạo phiên mới khi tải lại trang. (Nếu không xoá, hệ thống cũng tự dọn sau 24h.)
+            </p>
+          </div>
+        }
+        onCancel={() => setDeletingDraft(null)}
+        onConfirm={async () => {
+          if (!deletingDraft) return;
+          setBusy(deletingDraft.order_no + 'draft');
+          try {
+            await api.del(`/staff/orders/${deletingDraft.order_no}/draft`);
+            toast.success('Đã xoá đơn chưa order.');
+            drafts.reload();
+            all.reload();
+            setDeletingDraft(null);
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Không xoá được.');
+          } finally {
+            setBusy(null);
+          }
+        }}
       />
 
       {/* ---- Popup xem hóa đơn ---- */}

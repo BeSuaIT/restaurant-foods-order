@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ToastProvider } from './components/Toast';
+import { AnnouncementBadgeProvider } from './components/announcements';
 
 import { Landing } from './pages/customer/Landing';
 import { Join } from './pages/customer/Join';
@@ -11,6 +12,7 @@ import { Login } from './pages/Login';
 import { StaffOrders } from './pages/staff/StaffOrders';
 import { StaffPayments } from './pages/staff/StaffPayments';
 import { StaffTables } from './pages/staff/StaffTables';
+import { StaffNotifications } from './pages/staff/StaffNotifications';
 
 import { AdminDashboard, AdminReports } from './pages/admin/AdminDashboard';
 import { AdminUsers } from './pages/admin/AdminUsers';
@@ -20,6 +22,8 @@ import { AdminTables } from './pages/admin/AdminTables';
 import { AdminHistory } from './pages/admin/AdminHistory';
 import { AdminDiscountCodes } from './pages/admin/AdminDiscountCodes';
 import { AdminSettings } from './pages/admin/AdminSettings';
+import { AdminAnnouncements } from './pages/admin/AdminAnnouncements';
+import { QrPrintPage } from './pages/admin/QrPrintPage';
 
 /** Cuộn lên đầu khi đổi trang */
 function ScrollTop() {
@@ -51,7 +55,9 @@ export function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
-        <ScrollTop />
+        {/* Chia sẻ số thông báo chưa đọc giữa sidebar và trang "Thông báo" */}
+        <AnnouncementBadgeProvider>
+          <ScrollTop />
         <Routes>
           {/* ============ KHÁCH HÀNG ============ */}
           <Route path="/" element={<Landing />} />
@@ -70,6 +76,7 @@ export function App() {
           <Route path="/staff/orders" element={<StaffOrders />} />
           <Route path="/staff/payments" element={<StaffPayments />} />
           <Route path="/staff/tables" element={<StaffTables />} />
+          <Route path="/staff/notifications" element={<StaffNotifications />} />
 
           {/* ============ ADMIN ============ */}
           <Route path="/admin/login" element={<Login mode="admin" />} />
@@ -78,13 +85,17 @@ export function App() {
           <Route path="/admin/dishes" element={<AdminDishes />} />
           <Route path="/admin/option-groups" element={<AdminOptionGroups />} />
           <Route path="/admin/tables" element={<AdminTables />} />
+          {/* Trang in thẻ QR: đứng ngoài AppLayout để không bị khung/sidebar ảnh hưởng */}
+          <Route path="/admin/tables/print" element={<QrPrintPage />} />
           <Route path="/admin/discount-codes" element={<AdminDiscountCodes />} />
+          <Route path="/admin/announcements" element={<AdminAnnouncements />} />
           <Route path="/admin/history" element={<AdminHistory />} />
           <Route path="/admin/reports" element={<AdminReports />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </AnnouncementBadgeProvider>
       </ToastProvider>
     </BrowserRouter>
   );

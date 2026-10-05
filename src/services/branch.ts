@@ -49,7 +49,7 @@ export function effectiveBranchFilter(req: BranchActor, raw: unknown): number | 
  * ------------------------------------------------------------------ */
 
 const BRANCH_SELECT = `
-  SELECT b.id, b.name, b.address, b.phone, b.note, b.is_active, b.created_at,
+  SELECT b.id, b.name, b.address, b.phone, b.note, b.lat, b.lng, b.is_active, b.created_at,
          (SELECT COUNT(*) FROM rest_tables t WHERE t.branch_id = b.id)                          AS table_count,
          (SELECT COUNT(*) FROM users u      WHERE u.branch_id = b.id)                          AS user_count
     FROM branches b
@@ -75,16 +75,37 @@ export async function requireBranch(value: unknown): Promise<number | null> {
   return b.id;
 }
 
+/**
+ * Chuẩn hoá tọa độ nhập tay (chuỗi hoặc số) về dạng số thập phân, hoặc null nếu trống.
+ * Dùng cho vĩ độ (lat) và kinh độ (lng) của cơ sở.
+ */
+export function parseCoordinate(value: unknown, field: string, limit: number): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw badRequest(`${field} không hợp lệ.`);
+  if (n < -limit || n > limit) throw badRequest(`${field} phải nằm trong khoảng ${-limit} đến ${limit}.`);
+  return Math.round(n * 1e7) / 1e7;
+}
+
 /* ------------------------------------------------------------------ *
  *  Truy vấn mã giảm giá
  * ------------------------------------------------------------------ */
 
 export async function listDiscountCodes(): Promise<DiscountCode[]> {
   return query<DiscountCode>(
-    `SELECT id, code, description, percent, start_at, end_at, is_active, used_count, created_at
+    `SELECT id, code, description, percent, usage_limit, start_at, end_at, is_active, used_count, created_at
        FROM discount_codes
       ORDER BY is_active DESC, code COLLATE "C"`,
   );
+}
+
+/** Cột của bảng discount_codes (dùng chung cho SELECT / INSERT / UPDATE). */
+export const DISCOUNT_COLUMNS =
+  'id, code, description, percent, usage_limit, start_at, end_at, is_active, used_count, created_at';
+
+/** Mã đã hết lượt sử dụng (có giới hạn và đã dùng đủ) hay chưa. */
+export function isDiscountExhausted(d: Pick<DiscountCode, 'usage_limit' | 'used_count'>): boolean {
+  return d.usage_limit != null && Number(d.used_count) >= Number(d.usage_limit);
 }
 
 export interface DiscountCheck {
@@ -113,13 +134,18 @@ export async function checkDiscountCode(rawCode: unknown, subtotal: number): Pro
   if (!code) throw badRequest('Vui lòng nhập mã giảm giá.');
 
   const row = await queryOne<DiscountCode>(
-    `SELECT id, code, description, percent, start_at, end_at, is_active, used_count, created_at
+    `SELECT ${DISCOUNT_COLUMNS}
        FROM discount_codes
       WHERE upper(code) = $1`,
     [code],
   );
   if (!row) throw badRequest('Mã giảm giá không tồn tại.');
   if (!row.is_active) throw badRequest('Mã giảm giá đã ngừng hoạt động.');
+
+  // Số lần sử dụng: hết lượt thì báo khách/nhân viên rõ ràng
+  if (isDiscountExhausted(row)) {
+    throw badRequest(`Mã giảm giá đã hết lượt sử dụng (${row.used_count}/${row.usage_limit} lần).`);
+  }
 
   const now = Date.now();
   if (row.start_at && new Date(row.start_at).getTime() > now)

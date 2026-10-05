@@ -1,6 +1,34 @@
 import { createApp, assertDatabase } from './app.js';
 import { config } from './config.js';
 import { pool } from './db.js';
+import { DRAFT_TTL_HOURS, purgeStaleDrafts } from './services/order.service.js';
+
+/** Chu kỳ quét đơn nháp quá hạn (ms). */
+const PURGE_INTERVAL_MS = 30 * 60 * 1000;
+
+/**
+ * Dọn đơn nháp quá 24h + phiên bàn bỏ quên.
+ *
+ * Khách quét QR rồi đi mất (không order) sẽ để lại 1 đơn nháp trong DB. Nếu không
+ * dọn thì số mã đơn rác tích luỹ mỗi ngày và màn "Danh sách Order" của nhân viên
+ * nhiễm đầy đơn chưa gửi. Chạy 1 lần lúc khởi động rồi lặp mỗi 30 phút.
+ */
+function startDraftPurge(): void {
+  const run = async () => {
+    try {
+      const { orders, sessions } = await purgeStaleDrafts();
+      if (orders > 0 || sessions > 0) {
+        console.log(`  [dọn dẹp] Đã xoá ${orders} đơn chưa gửi + ${sessions} phiên bàn quá hạn (${DRAFT_TTL_HOURS}h).`);
+      }
+    } catch (err) {
+      console.error('[dọn dẹp] Lỗi khi xoá đơn nháp quá hạn:', err);
+    }
+  };
+
+  void run();
+  const timer = setInterval(() => void run(), PURGE_INTERVAL_MS);
+  timer.unref(); // không giữ tiến trình sống
+}
 
 async function main() {
   console.log('==============================================');
@@ -22,6 +50,7 @@ async function main() {
     console.log(`  Nhân viên  : ${config.publicUrl}/staff`);
     console.log(`  Admin      : ${config.publicUrl}/admin`);
     console.log('==============================================');
+    startDraftPurge();
   });
 
   let shuttingDown = false;

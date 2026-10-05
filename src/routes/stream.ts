@@ -66,9 +66,13 @@ streamRouter.get(
     clients.set(client.id, client);
 
     const onChange = (evt: BusEvent) => {
-      // Sự kiện menu/bàn luôn gửi cho tất cả
+      // Sự kiện menu/bàn/thông báo chỉ gửi cho nhân viên & admin
       if (evt.type === 'menu.updated' || evt.type === 'table.updated' || evt.type === 'heartbeat') {
         send(evt.type, { at: new Date().toISOString() });
+        return;
+      }
+      if (evt.type === 'announcement.updated') {
+        if (client.kind === 'staff') send(evt.type, { at: new Date().toISOString() });
         return;
       }
       if (client.kind === 'staff') {

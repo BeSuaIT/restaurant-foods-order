@@ -12,6 +12,10 @@ export interface Branch {
   address: string | null;
   phone: string | null;
   note: string | null;
+  /** Vĩ độ (chuỗn để JS không làm tròn sai) */
+  lat: string | null;
+  /** Kinh độ */
+  lng: string | null;
   is_active: boolean;
   created_at: string;
   /** Số bàn / số nhân viên (API quản trị) */
@@ -25,11 +29,34 @@ export interface DiscountCode {
   code: string;
   description: string | null;
   percent: number;
+  /** null = không giới hạn số lần dùng */
+  usage_limit: number | null;
   start_at: string | null;
   end_at: string | null;
   is_active: boolean;
   used_count: number;
   created_at: string;
+}
+
+/** Thông báo nội bộ do Admin soạn gửi cho nhân viên */
+export interface Announcement {
+  id: number;
+  title: string;
+  /** HTML đã được lọc an toàn ở server */
+  content: string;
+  image_url: string | null;
+  is_published: boolean;
+  published_at: string;
+  created_by: number | null;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Thông báo + trạng thái đã đọc của người đang đăng nhập */
+export interface AnnouncementWithRead extends Announcement {
+  is_read: boolean;
+  read_at: string | null;
 }
 
 export interface PublicUser {

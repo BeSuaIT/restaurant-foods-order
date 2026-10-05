@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { initials, tokenStore, useAsync, useLiveStream, useStaffAuth } from '../api';
 import { useToast } from './Toast';
+import { useAnnouncementBadge } from './announcements';
+import { AnnouncementPopup } from './AnnouncementPopup';
 import type { DashboardStats, StaffUser } from '../types';
 
 export interface NavItem {
@@ -9,7 +11,8 @@ export interface NavItem {
   label: string;
   icon: string;
   end?: boolean;
-  badge?: 'pending' | 'unpaid';
+  /** Số đếm hiện trên item: pending = đơn chờ xác nhận, unpaid = hoá đơn chờ thu, draft = đơn chưa order, notif = thông báo chưa đọc */
+  badge?: 'pending' | 'unpaid' | 'draft' | 'notif';
 }
 
 interface Props {
@@ -72,13 +75,27 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
     if (e.type.startsWith('order.') || e.type === 'menu.updated' || e.type === 'table.updated') {
       stats.reload();
     }
+    // Admin đăng thông báo mới -> làm mới số đếm chưa đọc
+    if (e.type === 'announcement.updated') reloadNotif();
   });
 
   const pending = stats.data?.counts.pending ?? 0;
   const unpaid = (stats.data?.counts.confirmed ?? 0) + (stats.data?.counts.served ?? 0);
+  const drafts = stats.data?.counts.draft ?? 0;
+
+  // Số thông báo chưa đọc — dùng chung context với trang "Thông báo".
+  const { unread: notifUnread, reload: reloadNotif } = useAnnouncementBadge();
 
   const badgeValue = (b?: NavItem['badge']) =>
-    b === 'pending' ? pending : b === 'unpaid' ? unpaid : 0;
+    b === 'pending'
+      ? pending
+      : b === 'unpaid'
+        ? unpaid
+        : b === 'draft'
+          ? drafts
+          : b === 'notif'
+            ? notifUnread
+            : 0;
 
   if (bare) return <>{children}</>;
 
@@ -177,6 +194,9 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
 
         <div className="s-content">{children}</div>
       </div>
+
+      {/* Popup thông báo mới: chỉ hiện 1 lần mỗi lần đăng nhập (xem AnnouncementPopup) */}
+      {!bare ? <AnnouncementPopup /> : null}
     </div>
   );
 }
@@ -204,6 +224,7 @@ export const STAFF_SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/staff/orders', label: 'Danh sách Order', icon: '📋', badge: 'pending' },
       { to: '/staff/payments', label: 'Hóa đơn chưa thanh toán', icon: '💳', badge: 'unpaid' },
       { to: '/staff/tables', label: 'Bàn đang phục vụ', icon: '🪑' },
+      { to: '/staff/notifications', label: 'Thông báo', icon: '📢', badge: 'notif' },
     ],
   },
   {
@@ -229,6 +250,7 @@ export const ADMIN_SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/staff/orders', label: 'Danh sách Order', icon: '📋', badge: 'pending' },
       { to: '/staff/payments', label: 'Hóa đơn chưa thanh toán', icon: '💳', badge: 'unpaid' },
       { to: '/staff/tables', label: 'Bàn đang phục vụ', icon: '🪑' },
+      { to: '/staff/notifications', label: 'Thông báo', icon: '📢', badge: 'notif' },
     ],
   },
   {
@@ -239,6 +261,7 @@ export const ADMIN_SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/admin/option-groups', label: 'Phần chọn đi kèm', icon: '⚙️' },
       { to: '/admin/tables', label: 'Quản lý bàn & mã QR', icon: '📱' },
       { to: '/admin/discount-codes', label: 'Mã giảm giá', icon: '🎟️' },
+      { to: '/admin/announcements', label: 'Thông báo nội bộ', icon: '📣' },
       { to: '/admin/history', label: 'Lịch sử order', icon: '🧾' },
       { to: '/admin/settings', label: 'Cài đặt cơ sở', icon: '🏢' },
     ],

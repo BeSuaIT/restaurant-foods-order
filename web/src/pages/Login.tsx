@@ -103,7 +103,7 @@ export function Login({ mode }: Props) {
             Admin: <code>admin</code> / <code>1234</code>
           </div>
           <div>
-            Nhân viên: <code>order</code> / <code>1224</code> · <code>check</code> / <code>1234</code>
+            Nhân viên: <code>order</code> / <code>1234</code> · <code>check</code> / <code>1234</code>
           </div>
           <div style={{ marginTop: 6 }} className="tiny muted">
             {isAdmin ? (

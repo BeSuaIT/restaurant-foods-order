@@ -4,14 +4,19 @@ import { api, formatDate, formatMoney, timeAgo, tokenStore, useAsync, useLiveStr
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { BillModal } from '../../components/BillModal';
 import { StatusBadge } from '../../components/OrderBits';
+import { AreaChart, BarChart, DonutChart, HBarChart } from '../../components/Charts';
 import type { Branch, DashboardStats, Order } from '../../types';
 
 interface ReportData {
   daily: { day: string; orders: number; revenue: number; discount: number }[];
+  byHour: { hour: number; orders: number; revenue: number }[];
   byStaff: { id: number; full_name: string; paid_orders: number; revenue: number }[];
   byTable: { id: number; code: string; name: string; paid_orders: number; revenue: number }[];
+  byBranch: { id: number; name: string; paid_orders: number; revenue: number }[];
   byDiscount: { code: string; orders: number; discount: number }[];
-  totals: { orders: number; revenue: number; discount: number };
+  topDishes: { name: string; quantity: number; revenue: number }[];
+  totals: { orders: number; revenue: number; discount: number; items: number; avg_order: number };
+  funnel: { paid: number; cancelled: number; open: number };
 }
 
 /* ================================================================== *
@@ -249,7 +254,17 @@ export function AdminReports() {
   );
 
   const r = state.data;
-  const maxDay = Math.max(1, ...(r?.daily ?? []).map((d) => d.revenue));
+  // Khung giờ đông nhất — đưa lên đầu để biểu đồ không chỉ là hình vẽ
+  const peakHour = (() => {
+    const best = (r?.byHour ?? []).reduce<{ label: string; value: number; hint?: string } | null>((acc, h) => {
+      if (Number(h.orders) <= 0) return acc;
+      if (!acc || Number(h.orders) > acc.value) {
+        return { label: String(h.hour).padStart(2, '0'), value: Number(h.orders), hint: formatMoney(h.revenue) };
+      }
+      return acc;
+    }, null);
+    return best;
+  })();
 
   const exportCsv = () => {
     if (!r) return;
@@ -345,36 +360,184 @@ export function AdminReports() {
             </div>
             <div className="s-stat green">
               <div className="lbl">TB mỗi đơn</div>
-              <div className="val">
-                {formatMoney(r.totals.orders ? r.totals.revenue / r.totals.orders : 0)}
+              <div className="val">{formatMoney(r.totals.avg_order)}</div>
+            </div>
+            <div className="s-stat">
+              <div className="lbl">Số món đã bán</div>
+              <div className="val">{r.totals.items}</div>
+            </div>
+          </div>
+
+          {/* ---------------- BIỂU ĐỒ ----------------
+              Biểu đồ vẽ tay bằng SVG (không thêm thư viện) nên không phụ thuộc
+              mạng tải chart.js hay gì; xem Charts.tsx */}
+          <div className="s-panel">
+            <div className="s-panel-head">
+              <h3>📈 Xu hướng doanh thu &amp; số đơn theo ngày</h3>
+              <span className="badge">{r.daily.length} ngày có dữ liệu</span>
+            </div>
+            <div className="s-panel-body">
+              <AreaChart
+                seriesLabel="Doanh thu"
+                secondaryLabel="Số đơn"
+                points={[...r.daily]
+                  .reverse()
+                  .map((d) => ({
+                    label: formatDate(d.day),
+                    value: Number(d.revenue),
+                    hint: `${d.orders} đơn`,
+                  }))}
+                secondaryPoints={[...r.daily]
+                  .reverse()
+                  .map((d) => ({ label: formatDate(d.day), value: Number(d.orders) }))}
+                format={(n) => formatMoney(n)}
+                emptyText="Không có đơn đã thanh toán trong khoảng thời gian này."
+              />
+            </div>
+          </div>
+
+          <div className="row" style={{ gap: 14, alignItems: 'stretch', flexWrap: 'wrap' }}>
+            <div className="s-panel" style={{ flex: '1 1 420px', marginBottom: 0 }}>
+              <div className="s-panel-head">
+                <h3>🕐 Giờ vàng (số đơn theo khung giờ)</h3>
+              </div>
+              <div className="s-panel-body">
+                <BarChart
+                  points={[...Array(24).keys()].map((h) => {
+                    const hit = r.byHour.find((x) => Number(x.hour) === h);
+                    return {
+                      label: String(h).padStart(2, '0'),
+                      value: hit ? Number(hit.orders) : 0,
+                      hint: hit ? formatMoney(hit.revenue) : undefined,
+                    };
+                  })}
+                  height={180}
+                  emptyText="Không có dữ liệu theo giờ."
+                />
+                {peakHour ? (
+                  <div className="tiny muted" style={{ marginTop: 8 }}>
+                    🏆 Khung giờ đông nhất: <strong>{peakHour.label}h</strong> ({peakHour.value} đơn
+                    {peakHour.hint ? ` · ${peakHour.hint}` : ''}).
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="s-panel" style={{ flex: '1 1 420px', marginBottom: 0 }}>
+              <div className="s-panel-head">
+                <h3>🍽️ Món bán chạy (số phần đã bán)</h3>
+              </div>
+              <div className="s-panel-body">
+                <HBarChart
+                  points={r.topDishes.map((d) => ({
+                    label: d.name,
+                    value: Number(d.quantity),
+                    hint: formatMoney(d.revenue),
+                  }))}
+                  emptyText="Không có món nào đã bán."
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="row" style={{ gap: 14, alignItems: 'stretch', flexWrap: 'wrap' }}>
+            <div className="s-panel" style={{ flex: '1 1 380px', marginBottom: 0 }}>
+              <div className="s-panel-head">
+                <h3>👨‍🍳 Doanh thu theo nhân viên</h3>
+              </div>
+              <div className="s-panel-body">
+                <HBarChart
+                  points={r.byStaff.map((s) => ({
+                    label: s.full_name,
+                    value: Number(s.revenue),
+                    hint: `${s.paid_orders} đơn`,
+                  }))}
+                  format={(n) => formatMoney(n)}
+                  emptyText="Không có dữ liệu."
+                />
+              </div>
+            </div>
+
+            <div className="s-panel" style={{ flex: '1 1 380px', marginBottom: 0 }}>
+              <div className="s-panel-head">
+                <h3>🏢 Doanh thu theo cơ sở</h3>
+              </div>
+              <div className="s-panel-body">
+                <DonutChart
+                  centerLabel="Tổng doanh thu"
+                  points={r.byBranch.map((b) => ({
+                    label: b.name,
+                    value: Number(b.revenue),
+                    hint: `${b.paid_orders} đơn`,
+                  }))}
+                  format={(n) => formatMoney(n)}
+                  emptyText="Không có cơ sở nào phát sinh doanh thu."
+                />
               </div>
             </div>
           </div>
 
           <div className="s-panel">
             <div className="s-panel-head">
-              <h3>📈 Doanh thu theo ngày</h3>
-              <span className="badge">{r.daily.length} ngày có dữ liệu</span>
+              <h3>🎟️ Giảm trừ theo mã (tỷ trọng tiền giảm)</h3>
             </div>
             <div className="s-panel-body">
-              {r.daily.length === 0 ? (
-                <div className="muted small">Không có đơn đã thanh toán trong khoảng thời gian này.</div>
+              {r.byDiscount.length === 0 ? (
+                <div className="muted small">Không có mã giảm giá nào được dùng trong khoảng này.</div>
               ) : (
-                r.daily.map((d) => (
-                  <div key={d.day} style={{ marginBottom: 12 }}>
-                    <div className="row-between small" style={{ marginBottom: 4 }}>
-                      <span className="strong">{formatDate(d.day)}</span>
-                      <span className="nowrap muted">
-                        {d.orders} đơn · <strong style={{ color: 'var(--brand-dark)' }}>{formatMoney(d.revenue)}</strong>
-                        {Number(d.discount) > 0 ? ` · giảm ${formatMoney(d.discount)}` : ''}
-                      </span>
-                    </div>
-                    <div style={{ height: 8, background: 'var(--muted-bg)', borderRadius: 999, overflow: 'hidden' }}>
-                      <div style={{ width: `${(d.revenue / maxDay) * 100}%`, height: '100%', background: 'linear-gradient(90deg, var(--brand), #fb923c)' }} />
-                    </div>
-                  </div>
-                ))
+                <DonutChart
+                  centerLabel="Tổng giảm"
+                  points={r.byDiscount.map((d) => ({
+                    label: d.code,
+                    value: Number(d.discount),
+                    hint: `${d.orders} đơn`,
+                  }))}
+                  format={(n) => formatMoney(n)}
+                />
               )}
+            </div>
+          </div>
+
+          <div className="row" style={{ gap: 14, alignItems: 'stretch', flexWrap: 'wrap' }}>
+            <div className="s-panel" style={{ flex: '1 1 380px', marginBottom: 0 }}>
+              <div className="s-panel-head">
+                <h3>📋 Trạng thái đơn trong khoảng</h3>
+              </div>
+              <div className="s-panel-body">
+                <DonutChart
+                  centerLabel="Tổng đơn"
+                  points={[
+                    { label: 'Đã thanh toán', value: r.funnel.paid },
+                    { label: 'Đang xử lý', value: r.funnel.open },
+                    { label: 'Đã huỷ', value: r.funnel.cancelled },
+                  ].filter((p) => p.value > 0)}
+                  format={(n) => String(n)}
+                  emptyText="Không có đơn nào trong khoảng thời gian này."
+                />
+                {r.funnel.open > 0 ? (
+                  <div className="tiny muted" style={{ marginTop: 8 }}>
+                    ℹ️ Có <strong>{r.funnel.open}</strong> đơn chưa thanh toán (chờ xác nhận / phục vụ / chờ thu
+                    tiền).
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="s-panel" style={{ flex: '1 1 380px', marginBottom: 0 }}>
+              <div className="s-panel-head">
+                <h3>🪑 Doanh thu theo bàn (top 10)</h3>
+              </div>
+              <div className="s-panel-body">
+                <HBarChart
+                  points={r.byTable.slice(0, 10).map((t) => ({
+                    label: `${t.code} · ${t.name}`,
+                    value: Number(t.revenue),
+                    hint: `${t.paid_orders} đơn`,
+                  }))}
+                  format={(n) => formatMoney(n)}
+                  emptyText="Không có dữ liệu."
+                />
+              </div>
             </div>
           </div>
 

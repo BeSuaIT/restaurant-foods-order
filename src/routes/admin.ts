@@ -9,7 +9,23 @@ import { requireAdmin, requireStaff } from '../middleware/auth.js';
 import { badRequest, conflict, notFound, toInt } from '../utils.js';
 import { bus } from '../bus.js';
 import { listOrders, dashboardStats } from '../services/order.service.js';
-import { effectiveBranchFilter, getBranch, listBranches, listDiscountCodes, normalizeDiscountCode, requireBranch } from '../services/branch.js';
+import {
+  DISCOUNT_COLUMNS,
+  effectiveBranchFilter,
+  getBranch,
+  listBranches,
+  listDiscountCodes,
+  normalizeDiscountCode,
+  parseCoordinate,
+  requireBranch,
+} from '../services/branch.js';
+import {
+  createAnnouncement,
+  deleteAnnouncement,
+  listAnnouncementsAdmin,
+  parseAnnouncementInput,
+  updateAnnouncement,
+} from '../services/announcement.service.js';
 import type { DiscountCode, OptionGroup, OptionItem, OrderStatus, RestTable } from '../types.js';
 
 export const adminRouter = Router();
@@ -43,6 +59,9 @@ const branchSchema = z.object({
   address: z.string().trim().max(300).optional().nullable(),
   phone: z.string().trim().max(20).optional().nullable(),
   note: z.string().trim().max(200).optional().nullable(),
+  /** Tọa độ (chuỗi hoặc số đều nhận được) — chuẩn hoá lại trong route */
+  lat: z.union([z.string(), z.number(), z.null()]).optional().nullable(),
+  lng: z.union([z.string(), z.number(), z.null()]).optional().nullable(),
   is_active: z.boolean().default(true),
 });
 
@@ -57,13 +76,18 @@ adminRouter.post(
   '/branches',
   asyncRoute(async (req, res) => {
     const body = branchSchema.parse(req.body);
-    const rows = await query<{ id: number }>('INSERT INTO branches (name, address, phone, note, is_active) VALUES ($1,$2,$3,$4,$5) RETURNING id', [
-      body.name,
-      body.address || null,
-      body.phone || null,
-      body.note || null,
-      body.is_active,
-    ]);
+    const rows = await query<{ id: number }>(
+      'INSERT INTO branches (name, address, phone, note, lat, lng, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+      [
+        body.name,
+        body.address || null,
+        body.phone || null,
+        body.note || null,
+        parseCoordinate(body.lat, 'Vĩ độ', 90),
+        parseCoordinate(body.lng, 'Kinh độ', 180),
+        body.is_active,
+      ],
+    );
     ok(res, await getBranch(rows[0].id), 201);
   }),
 );
@@ -81,6 +105,15 @@ adminRouter.patch(
         params.push(key === 'is_active' ? body[key] : (body[key] as string) || null);
         sets.push(`${key} = $${params.length}`);
       }
+    }
+    // Tọa độ: chuẩn hoá + kiểm tra khoảng (vĩ độ -90..90, kinh độ -180..180)
+    if (body.lat !== undefined) {
+      params.push(parseCoordinate(body.lat, 'Vĩ độ', 90));
+      sets.push(`lat = $${params.length}`);
+    }
+    if (body.lng !== undefined) {
+      params.push(parseCoordinate(body.lng, 'Kinh độ', 180));
+      sets.push(`lng = $${params.length}`);
     }
     if (sets.length === 0) throw badRequest('Không có thông tin nào để cập nhật.');
 
@@ -137,19 +170,30 @@ const discountSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, 'Mã giảm giá chỉ gồm chữ, số, - và _'),
   description: z.string().trim().max(200).optional().nullable(),
   percent: z.coerce.number().int().min(0).max(100, 'Phần trăm giảm tối đa là 100.'),
+  /** null / 0 = không giới hạn số lần dùng */
+  usage_limit: z
+    .union([z.coerce.number().int().min(0).max(1_000_000), z.literal(null), z.literal(0)])
+    .optional()
+    .nullable(),
   start_at: z.string().optional().nullable(),
   end_at: z.string().optional().nullable(),
   is_active: z.boolean().default(true),
 });
 
-function parseDiscountBody(raw: unknown): z.infer<typeof discountSchema> & { code: string; start_at: string | null; end_at: string | null } {
+function parseDiscountBody(raw: unknown): z.infer<typeof discountSchema> & {
+  code: string;
+  usage_limit: number | null;
+  start_at: string | null;
+  end_at: string | null;
+} {
   const body = discountSchema.parse(raw);
   const start = toIsoDateTime(body.start_at, 'Ngày bắt đầu');
   const end = toIsoDateTime(body.end_at, 'Ngày kết thúc');
   if (start && end && new Date(start) > new Date(end)) {
     throw badRequest('Ngày kết thúc phải sau ngày bắt đầu.');
   }
-  return { ...body, code: normalizeDiscountCode(body.code), start_at: start, end_at: end };
+  const limit = body.usage_limit == null || body.usage_limit === 0 ? null : body.usage_limit;
+  return { ...body, code: normalizeDiscountCode(body.code), usage_limit: limit, start_at: start, end_at: end };
 }
 
 adminRouter.get(
@@ -167,10 +211,10 @@ adminRouter.post(
     if (exists) throw conflict('Mã giảm giá này đã tồn tại.');
 
     const rows = await query<DiscountCode>(
-      `INSERT INTO discount_codes (code, description, percent, start_at, end_at, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, code, description, percent, start_at, end_at, is_active, used_count, created_at`,
-      [body.code, body.description || null, body.percent, body.start_at, body.end_at, body.is_active],
+      `INSERT INTO discount_codes (code, description, percent, usage_limit, start_at, end_at, is_active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING ${DISCOUNT_COLUMNS}`,
+      [body.code, body.description || null, body.percent, body.usage_limit, body.start_at, body.end_at, body.is_active],
     );
     ok(res, rows[0], 201);
   }),
@@ -187,10 +231,10 @@ adminRouter.patch(
 
     const rows = await query<DiscountCode>(
       `UPDATE discount_codes
-          SET code=$2, description=$3, percent=$4, start_at=$5, end_at=$6, is_active=$7
+          SET code=$2, description=$3, percent=$4, usage_limit=$5, start_at=$6, end_at=$7, is_active=$8
         WHERE id=$1
-        RETURNING id, code, description, percent, start_at, end_at, is_active, used_count, created_at`,
-      [id, body.code, body.description || null, body.percent, body.start_at, body.end_at, body.is_active],
+        RETURNING ${DISCOUNT_COLUMNS}`,
+      [id, body.code, body.description || null, body.percent, body.usage_limit, body.start_at, body.end_at, body.is_active],
     );
     if (rows.length === 0) throw notFound('Không tìm thấy mã giảm giá.');
     ok(res, rows[0]);
@@ -214,6 +258,52 @@ adminRouter.delete(
     const rows = await query('DELETE FROM discount_codes WHERE id = $1 RETURNING id', [id]);
     if (rows.length === 0) throw notFound('Không tìm thấy mã giảm giá.');
     ok(res, { deleted: id });
+  }),
+);
+
+/* ================================================================== *
+ *  0c. THÔNG BÁO NỘI BỘ (Admin soạn -> nhân viên đọc)
+ * ================================================================== */
+
+/** Danh sách thông báo (kể cả bản chưa đăng) + số người đã đọc. */
+adminRouter.get(
+  '/announcements',
+  asyncRoute(async (_req, res) => {
+    ok(res, await listAnnouncementsAdmin());
+  }),
+);
+
+adminRouter.post(
+  '/announcements',
+  asyncRoute(async (req, res) => {
+    const input = parseAnnouncementInput(req.body);
+    const created = await createAnnouncement(input, {
+      id: req.staff!.id,
+      full_name: req.staff!.full_name,
+    });
+    bus.publish({ type: 'announcement.updated' });
+    ok(res, created, 201);
+  }),
+);
+
+adminRouter.patch(
+  '/announcements/:id',
+  asyncRoute(async (req, res) => {
+    const id = toInt(req.params.id, 0);
+    const input = parseAnnouncementInput(req.body);
+    const updated = await updateAnnouncement(id, input);
+    bus.publish({ type: 'announcement.updated' });
+    ok(res, updated);
+  }),
+);
+
+adminRouter.delete(
+  '/announcements/:id',
+  asyncRoute(async (req, res) => {
+    const id = toInt(req.params.id, 0);
+    const res1 = await deleteAnnouncement(id);
+    bus.publish({ type: 'announcement.updated' });
+    ok(res, res1);
   }),
 );
 
@@ -992,30 +1082,56 @@ adminRouter.get(
   }),
 );
 
-/** Báo cáo doanh thu theo ngày & theo nhân viên */
+/**
+ * Báo cáo doanh thu — dữ liệu cho biểu đồ + bảng.
+ *
+ * Gộp chung một CTE `paid` nên mọi truy vấn dùng cùng bộ lọc (khoảng ngày + cơ sở)
+ * và chỉ quét bảng orders một lần cho phần "đã thanh toán".
+ */
 adminRouter.get(
   '/reports',
   asyncRoute(async (req, res) => {
     const { from, to } = z.object({ from: z.string().optional(), to: z.string().optional() }).parse(req.query);
 
-    const params: string[] = [];
-    let clause = "WHERE o.status = 'paid'";
+    const params: SqlParam[] = [];
+    const where: string[] = ["o.status = 'paid'"];
     if (from) {
       params.push(from);
-      clause += ` AND o.paid_at >= $${params.length}`;
+      where.push(`o.paid_at >= $${params.length}`);
     }
     if (to) {
       params.push(to);
-      clause += ` AND o.paid_at <= $${params.length}`;
+      where.push(`o.paid_at <= $${params.length}`);
     }
+    // Bộ lọc cơ sở (bảng của đơn). Admin xem tất cả nếu không chọn.
+    // `timeParamCount` lưu số tham số CHỈ của khoảng ngày, để các truy vấn
+    // không lọc cơ sở (byBranch) dùng đúng số tham số — thừa tham số sẽ làm
+    // PostgreSQL báo "supplies N parameters, but prepared statement requires M".
+    const timeParamCount = params.length;
+    const branchClause = branchWhere(req, params);
+    const clause = `WHERE ${where.join(' AND ')}${branchClause}`;
 
     const daily = await query(
       `SELECT to_char(date_trunc('day', o.paid_at), 'YYYY-MM-DD') AS day,
               COUNT(*)::int AS orders,
               COALESCE(SUM(o.total),0) AS revenue,
               COALESCE(SUM(o.discount),0) AS discount
-         FROM orders o ${clause}
-        GROUP BY 1 ORDER BY 1 DESC LIMIT 60`,
+         FROM orders o
+         LEFT JOIN rest_tables t ON t.id = o.table_id
+         ${clause}
+        GROUP BY 1 ORDER BY 1 ASC LIMIT 400`,
+      params,
+    );
+
+    /** Số đơn theo khung giờ (0-23) — dùng cho biểu đồ "giờ vàng". */
+    const byHour = await query(
+      `SELECT EXTRACT(HOUR FROM o.paid_at)::int AS hour,
+              COUNT(*)::int AS orders,
+              COALESCE(SUM(o.total),0) AS revenue
+         FROM orders o
+         LEFT JOIN rest_tables t ON t.id = o.table_id
+         ${clause}
+        GROUP BY 1 ORDER BY 1 ASC`,
       params,
     );
 
@@ -1025,7 +1141,8 @@ adminRouter.get(
               COALESCE(SUM(o.total),0) AS revenue
          FROM orders o
          JOIN users u ON u.id = o.paid_by
-        ${clause}
+         LEFT JOIN rest_tables t ON t.id = o.table_id
+         ${clause}
         GROUP BY u.id, u.full_name
         ORDER BY revenue DESC`,
       params,
@@ -1037,15 +1154,49 @@ adminRouter.get(
               COALESCE(SUM(o.total),0) AS revenue
          FROM orders o
          JOIN rest_tables t ON t.id = o.table_id
-        ${clause}
+         ${clause}
         GROUP BY t.id, t.code, t.name
         ORDER BY revenue DESC LIMIT 50`,
       params,
     );
 
-    const totals = await queryOne<{ orders: number; revenue: number; discount: number }>(
-      `SELECT COUNT(*)::int AS orders, COALESCE(SUM(o.total),0) AS revenue, COALESCE(SUM(o.discount),0) AS discount
-         FROM orders o ${clause}`,
+    /** So sánh giữa các cơ sở (luôn trả về tất cả cơ sở, kể cả khi đang lọc 1 cơ sở). */
+    const byBranch = await query(
+      `SELECT b.id, b.name,
+              COUNT(*)::int AS paid_orders,
+              COALESCE(SUM(o.total),0) AS revenue
+         FROM orders o
+         JOIN rest_tables t ON t.id = o.table_id
+         JOIN branches b ON b.id = t.branch_id
+        WHERE ${where.join(' AND ')}
+        GROUP BY b.id, b.name
+        ORDER BY revenue DESC`,
+      params.slice(0, timeParamCount),
+    );
+
+    /** Món bán chạy trong khoảng thời gian (biểu đồ cột ngang). */
+    const topDishes = await query(
+      `SELECT oi.dish_name AS name,
+              SUM(oi.quantity)::int AS quantity,
+              COALESCE(SUM(oi.line_total),0) AS revenue
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         LEFT JOIN rest_tables t ON t.id = o.table_id
+         ${clause}
+        GROUP BY oi.dish_name
+        ORDER BY quantity DESC
+        LIMIT 12`,
+      params,
+    );
+
+    const totals = await queryOne<{ orders: number; revenue: number; discount: number; items: number; avg_order: number }>(
+      `SELECT COUNT(*)::int AS orders,
+              COALESCE(SUM(o.total),0) AS revenue,
+              COALESCE(SUM(o.discount),0) AS discount,
+              COALESCE(SUM((SELECT COALESCE(SUM(quantity),0) FROM order_items oi WHERE oi.order_id = o.id)), 0) AS items
+         FROM orders o
+         LEFT JOIN rest_tables t ON t.id = o.table_id
+         ${clause}`,
       params,
     );
 
@@ -1053,6 +1204,7 @@ adminRouter.get(
       `SELECT o.discount_code AS code, COUNT(*)::int AS orders,
               COALESCE(SUM(o.discount_amount),0) AS discount
          FROM orders o
+         LEFT JOIN rest_tables t ON t.id = o.table_id
          ${clause} AND o.discount_code IS NOT NULL
         GROUP BY o.discount_code
         ORDER BY discount DESC
@@ -1060,7 +1212,59 @@ adminRouter.get(
       params,
     );
 
-    ok(res, { daily, byStaff, byTable, byDiscount, totals });
+    /** So sánh số đơn đã thanh toán với tổng số đơn trong khoảng.
+     *
+     * Đơn đã thanh toán thì lọc theo paid_at; đơn chưa thanh toán có paid_at
+     * còn NULL nên phải lọc theo created_at — nếu dùng chung một điều kiện
+     * paid_at thì mọi đơn đang mở đều rơi ra ngoài và biểu đồ luôn ra 0.
+     */
+    const fParams: SqlParam[] = [];
+    const fFrom = from ? fParams.push(from) : 0;
+    const fTo = to ? fParams.push(to) : 0;
+    const paidWhen = [from ? `o.paid_at >= $${fFrom}` : '', to ? `o.paid_at <= $${fTo}` : '']
+      .filter(Boolean)
+      .join(' AND ');
+    const openWhen = [from ? `o.created_at >= $${fFrom}` : '', to ? `o.created_at <= $${fTo}` : '']
+      .filter(Boolean)
+      .join(' AND ');
+    const fBranch = branchWhere(req, fParams);
+
+    const funnel = await queryOne<{ paid: number; cancelled: number; open: number }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE o.status = 'paid')::int     AS paid,
+         COUNT(*) FILTER (WHERE o.status = 'cancelled')::int AS cancelled,
+         COUNT(*) FILTER (WHERE o.status IN ('pending','confirmed','served'))::int AS open
+       FROM orders o
+       LEFT JOIN rest_tables t ON t.id = o.table_id
+       WHERE o.status <> 'draft'
+         AND ( (${paidWhen || 'TRUE'}) OR (o.paid_at IS NULL AND ${openWhen || 'TRUE'}) )${fBranch}`,
+      fParams,
+    );
+
+    const orderCount = Number(totals?.orders ?? 0);
+    const revenue = Number(totals?.revenue ?? 0);
+
+    ok(res, {
+      daily,
+      byHour,
+      byStaff,
+      byTable,
+      byBranch,
+      byDiscount,
+      topDishes,
+      totals: {
+        orders: orderCount,
+        revenue,
+        discount: Number(totals?.discount ?? 0),
+        items: Number(totals?.items ?? 0),
+        avg_order: orderCount ? Math.round(revenue / orderCount) : 0,
+      },
+      funnel: {
+        paid: funnel?.paid ?? 0,
+        cancelled: funnel?.cancelled ?? 0,
+        open: funnel?.open ?? 0,
+      },
+    });
   }),
 );
 

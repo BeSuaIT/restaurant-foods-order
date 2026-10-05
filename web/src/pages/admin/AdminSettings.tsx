@@ -18,6 +18,9 @@ interface FormState {
   address: string;
   phone: string;
   note: string;
+  /** Tọa độ (chuỗi để không mất chữ số 0 ở đầu) */
+  lat: string;
+  lng: string;
   is_active: boolean;
 }
 
@@ -26,8 +29,31 @@ const emptyForm = (): FormState => ({
   address: '',
   phone: '',
   note: '',
+  lat: '',
+  lng: '',
   is_active: true,
 });
+
+/**
+ * Kiểm tra tọa độ nhập tay trước khi gửi (server cũng kiểm tra lại).
+ * Vĩ độ -90..90, kinh độ -180..180.
+ */
+function validateCoords(lat: string, lng: string): string[] {
+  const out: string[] = [];
+  const one = (raw: string, label: string, limit: number) => {
+    const v = raw.trim();
+    if (!v) return;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return out.push(`${label} không phải là số hợp lệ.`);
+    if (n < -limit || n > limit) out.push(`${label} phải nằm trong khoảng ${-limit} đến ${limit}.`);
+  };
+  one(lat, 'Vĩ độ', 90);
+  one(lng, 'Kinh độ', 180);
+  if ((lat.trim() && !lng.trim()) || (!lat.trim() && lng.trim())) {
+    out.push('Cần nhập cả vĩ độ và kinh độ, hoặc để trống cả hai.');
+  }
+  return out;
+}
 
 export function AdminSettings() {
   const toast = useToast();
@@ -43,6 +69,8 @@ export function AdminSettings() {
     if (!form) return;
     setErrors([]);
     if (!form.name.trim()) return setErrors(['Tên cơ sở không được để trống.']);
+    const coordErrors = validateCoords(form.lat, form.lng);
+    if (coordErrors.length) return setErrors(coordErrors);
 
     setBusy(true);
     try {
@@ -51,6 +79,8 @@ export function AdminSettings() {
         address: form.address.trim() || null,
         phone: form.phone.trim() || null,
         note: form.note.trim() || null,
+        lat: form.lat.trim() || null,
+        lng: form.lng.trim() || null,
         is_active: form.is_active,
       };
       if (form.id) {
@@ -102,6 +132,9 @@ export function AdminSettings() {
           <li>Trong <strong>Quản lý bàn &amp; mã QR</strong>, mỗi bàn thuộc 1 cơ sở.</li>
           <li>Trong <strong>Quản lý tài khoản</strong>, gán nhân viên vào cơ sở.</li>
           <li>Nhân viên chỉ thấy đơn &amp; bàn của cơ sở mình. Admin xem tất cả và có bộ lọc cơ sở.</li>
+          <li>
+            <strong>Toạ độ</strong> (vĩ độ/kinh độ) dùng cho tính năng chấm công vị trí.
+          </li>
         </ul>
       </div>
 
@@ -134,6 +167,22 @@ export function AdminSettings() {
               <div className="small" style={{ marginBottom: 6 }}>
                 ☎️ {b.phone ?? <span className="muted">Chưa có số điện thoại</span>}
               </div>
+              <div className="small" style={{ marginBottom: 6 }}>
+                📌{' '}
+                {b.lat != null && b.lng != null ? (
+                  <a
+                    href={`https://www.google.com/maps?q=${encodeURIComponent(`${b.lat},${b.lng}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mono"
+                    style={{ fontSize: 12 }}
+                  >
+                    {Number(b.lat).toFixed(6)}, {Number(b.lng).toFixed(6)}
+                  </a>
+                ) : (
+                  <span className="muted">Chưa nhập toạ độ</span>
+                )}
+              </div>
               {b.note ? (
                 <div className="small muted" style={{ marginBottom: 10 }}>
                   {b.note}
@@ -155,6 +204,10 @@ export function AdminSettings() {
                       address: b.address ?? '',
                       phone: b.phone ?? '',
                       note: b.note ?? '',
+                      // API trả toạ độ dạng SỐ (pg ép NUMERIC sang number) -> ép
+                      // về chuỗi, nếu không các .trim() phía dưới sẽ văng lỗi.
+                      lat: b.lat == null ? '' : String(b.lat),
+                      lng: b.lng == null ? '' : String(b.lng),
                       is_active: b.is_active,
                     });
                     setErrors([]);
@@ -237,6 +290,52 @@ export function AdminSettings() {
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
                 placeholder="VD: Cơ sở chính, 2 tầng + phòng riêng"
               />
+            </div>
+
+            <div className="field">
+              <label htmlFor="blat">Toạ độ (vĩ độ, kinh độ)</label>
+              <div className="row" style={{ gap: 10 }}>
+                <input
+                  id="blat"
+                  className="input mono"
+                  inputMode="decimal"
+                  value={form.lat}
+                  onChange={(e) => setForm({ ...form, lat: e.target.value })}
+                  placeholder="10.7769"
+                />
+                <input
+                  className="input mono"
+                  inputMode="decimal"
+                  aria-label="Kinh độ"
+                  value={form.lng}
+                  onChange={(e) => setForm({ ...form, lng: e.target.value })}
+                  placeholder="106.7009"
+                />
+              </div>
+              <div className="tiny muted" style={{ marginTop: 4 }}>
+                Dùng cho tính năng <strong>chấm công vị trí</strong> (định vị nhân viên trong bán kính cơ sở).
+                Mở Google Maps → bấm chuột phải vào vị trí cơ sở → sao chép 2 con số đầu. Để trống nếu chưa
+                cần dùng.
+              </div>
+              {(form.lat || form.lng) && !validateCoords(form.lat, form.lng).length ? (
+                <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                  <a
+                    className="btn btn-secondary btn-sm"
+                    href={`https://www.google.com/maps?q=${encodeURIComponent(`${form.lat.trim()},${form.lng.trim()}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    🗺 Xem trên Google Maps
+                  </a>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setForm({ ...form, lat: '', lng: '' })}
+                    type="button"
+                  >
+                    ✕ Xoá toạ độ
+                  </button>
+                </div>
+              ) : null}
             </div>
             <label className="checkbox">
               <input

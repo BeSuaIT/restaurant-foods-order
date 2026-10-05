@@ -235,7 +235,10 @@ export function BillModal({ orderNo, onClose, order: preset }: BillModalProps) {
   if (!orderNo) return null;
 
   return (
-    <div className="bill-modal-backdrop no-print" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    // KHÔNG đặt `no-print` ở đây: chính `.bill-page` nằm trong backdrop này,
+    // mà khi in `.no-print` bị `display:none !important` nên hoá đơn in ra
+    // trang trắng. Phần cần ẩn khi in là thanh công cụ (đã có class no-print).
+    <div className="bill-modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="bill-modal" role="dialog" aria-modal="true" aria-label="Xem hóa đơn">
         <div className="bill-modal-bar">
           <div className="grow">

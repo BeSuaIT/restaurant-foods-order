@@ -542,6 +542,27 @@ export function Menu() {
     }
   };
 
+  /**
+   * Khách bỏ phiên (không order nữa).
+   *
+   * Không có nút này thì mỗi lần quét QR là sinh 1 phiên + 1 đơn nháp trong DB.
+   * Nhân viên nhìn thấy đống đơn chưa order dồn lại, và lần sau quét lại QR khách
+   * vẫn bị đẩy vào phiên cũ. Bấm ở đây để xoá sạch cả hai.
+   */
+  const leaveSession = async () => {
+    setSubmitting(true);
+    try {
+      await api.del('/order/session');
+      tokenStore.clearTableToken();
+      toast.info('Đã kết thúc phiên. Mời quét lại mã QR khi bạn muốn order.');
+      nav('/', { replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Không kết thúc được phiên.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!tableToken || sessionState.loading) {
     return <div className="loading-box">Đang tải menu...</div>;
   }
@@ -581,6 +602,24 @@ export function Menu() {
           <div className="grow c-customer">
             {session?.customer_name} · {session?.customer_phone}
           </div>
+          <button
+            className="c-leave"
+            onClick={() => {
+              if (
+                window.confirm(
+                  'Kết thúc phiên order?\n\nĐơn chưa gửi của bạn sẽ bị xoá và phiên này đóng lại. ' +
+                    'Bạn cần quét lại mã QR trên bàn khi muốn order tiếp.',
+                )
+              ) {
+                void leaveSession();
+              }
+            }}
+            disabled={submitting}
+            title="Đóng phiên order (không order nữa)"
+            type="button"
+          >
+            {submitting ? <span className="spinner" /> : '✕'} Kết thúc phiên
+          </button>
         </div>
       </header>
 

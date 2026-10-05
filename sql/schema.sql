@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS branches (
   address    TEXT,
   phone      TEXT,
   note       TEXT,
+  -- Tọa độ địa lý — phục vụ tính năng chấm công (định vị bản thân/nhân viên trong bán kính cơ sở)
+  lat        NUMERIC(10,7),
+  lng        NUMERIC(10,7),
   is_active  BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -75,14 +78,16 @@ CREATE TABLE IF NOT EXISTS rest_tables (
 -- (index idx_rest_tables_branch tạo ở khối "NÂNG CẤP DB CŨ" cuối file)
 
 -- -------------------------------------------------------------
--- MÃ GIẢM GIÁ (Admin tạo: mã + % + thời gian áp dụng)
+-- MÃ GIẢM GIÁ (Admin tạo: mã + % + thời gian áp dụng + số lần dùng tối đa)
 -- Nhân viên nhập mã ở màn hình thanh toán để giảm tiền cho khách.
+-- usage_limit NULL = không giới hạn số lần sử dụng
 -- -------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS discount_codes (
   id           SERIAL PRIMARY KEY,
   code         TEXT NOT NULL UNIQUE,        -- lưu dạng chữ HOA, VD: "GIAM10"
   description  TEXT,
   percent      INT  NOT NULL DEFAULT 0 CHECK (percent >= 0 AND percent <= 100),
+  usage_limit  INT  CHECK (usage_limit IS NULL OR usage_limit > 0),
   start_at     TIMESTAMPTZ,
   end_at       TIMESTAMPTZ,
   is_active    BOOLEAN NOT NULL DEFAULT TRUE,
@@ -103,6 +108,33 @@ CREATE TABLE IF NOT EXISTS table_sessions (
   last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_table_sessions_table ON table_sessions(table_id);
+CREATE INDEX IF NOT EXISTS idx_table_sessions_seen ON table_sessions(last_seen_at);
+
+-- -------------------------------------------------------------
+-- THÔNG BÁO NỘI BỘ (Admin soạn -> nhân viên đọc)
+-- Nội dung lưu dạng HTML đã lọc an toàn (tiêu đề + nội dung + ảnh).
+-- published_at = thời điểm đẩy thông báo; chỉ thông báo đã đăng mới hiện với nhân viên.
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS announcements (
+  id              SERIAL PRIMARY KEY,
+  title           TEXT NOT NULL,
+  content         TEXT NOT NULL DEFAULT '',
+  image_url       TEXT,
+  is_published    BOOLEAN NOT NULL DEFAULT TRUE,
+  published_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by      INT REFERENCES users(id) ON DELETE SET NULL,
+  created_by_name TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Mỗi nhân viên đã đọc thông báo nào (giữ trạng thái "đã đọc" bền vững)
+CREATE TABLE IF NOT EXISTS announcement_reads (
+  announcement_id INT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+  user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  read_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (announcement_id, user_id)
+);
 
 -- -------------------------------------------------------------
 -- NHÓM LỰA CHỌN ĐI KÈM (VD: "Nhân thêm", "Sốt chấm", "Mức cay")
@@ -259,7 +291,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DO $$ DECLARE t TEXT; BEGIN
-  FOREACH t IN ARRAY ARRAY['users','rest_tables','option_groups','dishes','orders','branches','discount_codes'] LOOP
+  FOREACH t IN ARRAY ARRAY['users','rest_tables','option_groups','dishes','orders','branches','discount_codes','announcements'] LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_%s_updated_at ON %I;', t, t);
     EXECUTE format(
       'CREATE TRIGGER trg_%s_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION set_updated_at();',
@@ -277,7 +309,14 @@ ALTER TABLE orders         ADD COLUMN IF NOT EXISTS discount_code_id INT REFEREN
 ALTER TABLE orders         ADD COLUMN IF NOT EXISTS discount_code TEXT;
 ALTER TABLE orders         ADD COLUMN IF NOT EXISTS discount_percent INT NOT NULL DEFAULT 0;
 ALTER TABLE orders         ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE branches       ADD COLUMN IF NOT EXISTS lat NUMERIC(10,7);
+ALTER TABLE branches       ADD COLUMN IF NOT EXISTS lng NUMERIC(10,7);
+ALTER TABLE discount_codes ADD COLUMN IF NOT EXISTS usage_limit INT;
 CREATE INDEX IF NOT EXISTS idx_users_branch        ON users(branch_id);
 CREATE INDEX IF NOT EXISTS idx_rest_tables_branch  ON rest_tables(branch_id);
 CREATE INDEX IF NOT EXISTS idx_orders_branch       ON orders(table_id);
+-- Dọn đơn nháp (draft) quá hạn: index riêng cho status='draft'
+CREATE INDEX IF NOT EXISTS idx_orders_draft        ON orders(created_at) WHERE status = 'draft';
+CREATE INDEX IF NOT EXISTS idx_announcements_pub   ON announcements(published_at DESC) WHERE is_published;
+CREATE INDEX IF NOT EXISTS idx_announcement_reads  ON announcement_reads(user_id);
 

@@ -525,7 +525,7 @@ async function main() {
 
     console.log('\n\x1b[32m\x1b[1m✔ HOÀN TẤT!\x1b[0m');
     console.log(`\n  Khách hàng : http://${CFG.host}/\n  Nhân viên  : http://${CFG.host}/staff\n  Admin      : http://${CFG.host}/admin`);
-    console.log(`\n  Tài khoản: admin/1234 · order/1224 · check/1234\n`);
+    console.log(`\n  Tài khoản: admin/1234 · order/1234 · check/1234\n`);
   } finally {
     conn.end();
   }

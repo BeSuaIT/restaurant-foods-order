@@ -1,6 +1,6 @@
 ﻿import type { PoolClient } from 'pg';
 import { pool, query, queryOne, withTransaction, type SqlParam } from '../db.js';
-import { notifyOrderChanged } from '../bus.js';
+import { bus, notifyOrderChanged } from '../bus.js';
 import { badRequest, conflict, generateOrderNo, money, notFound } from '../utils.js';
 import { checkDiscountCode, normalizeDiscountCode } from './branch.js';
 import type {
@@ -386,6 +386,71 @@ export async function clearItems(order: Order, actor: { type: ActorType; name: s
 }
 
 /* ------------------------------------------------------------------ *
+ *  ĐƠN NHÁP (draft) — khách quét QR nhưng chưa gửi món
+ *
+ *  Nguyên nhân: mỗi lần khách quét QR là sinh 1 phiên + 1 đơn nháp. Nếu khách
+ *  quét rồi bỏ đi (điện thoại hết pin, quét nhầm...) thì đơn nháp nằm lại vô
+ *  dụng và dồn lên mỗi ngày. Xử lý:
+ *    1. Khách bấm "Huỷ phiên"  -> xoá ngay đơn nháp + phiên bàn.
+ *    2. Nhân viên xoá ở tab "Đơn chưa order".
+ *    3. Tự động dọn đơn nháp cũ hơn 24h (purgeStaleDrafts, chạy nền mỗi 30').
+ * ------------------------------------------------------------------ */
+
+/** Số giờ tự động xoá đơn nháp. Có thể ghi đè bằng biến môi trường DRAFT_TTL_HOURS. */
+export const DRAFT_TTL_HOURS = (() => {
+  const raw = Number(process.env.DRAFT_TTL_HOURS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 24;
+})();
+
+/** Khoảng thời gian SQL dùng cho purge (ví dụ "24 hours"). */
+const DRAFT_TTL_SQL = `$1::int * INTERVAL '1 hour'`;
+
+/**
+ * Xoá một đơn nháp (chỉ khi status = 'draft').
+ * Dùng cho cả 2 trường hợp: khách tự bấm "Huỷ phiên" và nhân viên xoá ở tab "Đơn chưa order".
+ */
+export async function deleteDraftOrder(order: Order): Promise<{ deleted: boolean; order_no: string }> {
+  if (order.status !== 'draft') {
+    throw conflict('Chỉ xoá được đơn chưa gửi (draft). Đơn đã gửi vui lòng dùng chức năng huỷ đơn.');
+  }
+
+  const deleted = await query("DELETE FROM orders WHERE id = $1 AND status = 'draft' RETURNING id", [order.id]);
+  if (deleted.length === 0) throw conflict('Đơn vừa được gửi bởi khách. Không cần xoá nữa.');
+
+  // Đẩy sự kiện để tab "Đơn chưa order" của nhân viên tự cập nhật
+  bus.publish({ type: 'order.updated', orderNo: order.order_no, tableId: order.table_id, status: 'draft' });
+
+  return { deleted: true, order_no: order.order_no };
+}
+
+/**
+ * Dọn đơn nháp quá hạn + phiên bàn không còn đơn nào (đặt giờ = 0 để dùng cho nhân viên xoá).
+ * @param hours tuổi tối đa của đơn nháp (mặc định DRAFT_TTL_HOURS)
+ */
+export async function purgeStaleDrafts(hours: number = DRAFT_TTL_HOURS): Promise<{ orders: number; sessions: number }> {
+  const res = await queryOne<{ orders: number; sessions: number }>(
+    `WITH deleted AS (
+       DELETE FROM orders o
+        WHERE o.status = 'draft'
+          AND o.created_at < NOW() - ${DRAFT_TTL_SQL}
+        RETURNING o.session_token
+     ), dead_sessions AS (
+       DELETE FROM table_sessions s
+        WHERE s.last_seen_at < NOW() - ${DRAFT_TTL_SQL}
+          AND NOT EXISTS (
+            SELECT 1 FROM orders o2
+             WHERE o2.session_token = s.token AND o2.status <> 'draft'
+          )
+        RETURNING s.id
+     )
+     SELECT (SELECT COUNT(*)::int FROM deleted) AS orders,
+            (SELECT COUNT(*)::int FROM dead_sessions) AS sessions`,
+    [hours],
+  );
+  return { orders: res?.orders ?? 0, sessions: res?.sessions ?? 0 };
+}
+
+/* ------------------------------------------------------------------ *
  *  Chuyển trạng thái
  * ------------------------------------------------------------------ */
 
@@ -589,7 +654,19 @@ export async function markPaid(
     if (rows.length === 0) throw conflict('Đơn vừa được thanh toán bởi nhân viên khác.');
 
     if (dc) {
-      await client.query('UPDATE discount_codes SET used_count = used_count + 1 WHERE id = $1', [dc.code.id]);
+      // Chốt lượt dùng ngay trong transaction: hai nhân viên thanh toán cùng lúc
+      // không thể vượt quá usage_limit (điều kiện nằm ngay trong câu UPDATE).
+      const used = await client.query(
+        `UPDATE discount_codes
+            SET used_count = used_count + 1
+          WHERE id = $1
+            AND (usage_limit IS NULL OR used_count < usage_limit)
+        RETURNING used_count`,
+        [dc.code.id],
+      );
+      if (used.rowCount === 0) {
+        throw conflict(`Mã ${dc.code.code} vừa hết lượt sử dụng. Hãy nhập mã khác hoặc bỏ mã giảm giá.`);
+      }
     }
 
     await addEvent(client, order.id, {

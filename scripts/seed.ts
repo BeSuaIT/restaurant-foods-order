@@ -82,7 +82,7 @@ const BRANCHES = [
 
 const USERS = [
   { username: 'admin', password: '1234', full_name: 'Quản trị nhà hàng', role: 'admin', branch: null as string | null, phone: '0900000001', note: 'Tài khoản Admin mặc định - xem tất cả cơ sở' },
-  { username: 'order', password: '1224', full_name: 'Nguyễn Văn An', role: 'staff', branch: 'trung-tam', phone: '0900000002', note: 'Nhân viên phục vụ' },
+  { username: 'order', password: '1234', full_name: 'Nguyễn Văn An', role: 'staff', branch: 'trung-tam', phone: '0900000002', note: 'Nhân viên phục vụ' },
   { username: 'check', password: '1234', full_name: 'Trần Thị Bình', role: 'staff', branch: 'trung-tam', phone: '0900000003', note: 'Nhân viên phục vụ' },
   { username: 'quan', password: '1234', full_name: 'Lê Minh Quân', role: 'staff', branch: 'phia-nam', phone: '0900000004', note: 'Nhân viên phục vụ cơ sở Phía Nam' },
 ];
@@ -442,7 +442,7 @@ async function main() {
   console.log('  HOÀN TẤT! Tài khoản đăng nhập:');
   console.log('  --------------------------------------------');
   console.log('  Admin              : admin / 1234  (xem tất cả cơ sở)');
-  console.log('  NV Cơ sở Trung tâm : order / 1224  (Nguyễn Văn An)');
+  console.log('  NV Cơ sở Trung tâm : order / 1234  (Nguyễn Văn An)');
   console.log('  NV Cơ sở Trung tâm : check / 1234  (Trần Thị Bình)');
   console.log('  NV Cơ sở Phía Nam  : quan / 1234   (Lê Minh Quân)');
   console.log('  --------------------------------------------');

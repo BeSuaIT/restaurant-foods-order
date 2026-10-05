@@ -43,7 +43,34 @@ export function Landing() {
 
         {hasSession && !table ? (
           <div className="alert alert-info" style={{ textAlign: 'left' }}>
-            Bạn đang có phiên order. <Link to="/menu" style={{ textDecoration: 'underline' }}>Tiếp tục order</Link>
+            <div>
+              Bạn đang có phiên order.{' '}
+              <Link to="/menu" style={{ textDecoration: 'underline' }}>
+                Tiếp tục order
+              </Link>
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: 10 }}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    'Kết thúc phiên order đang mở?\n\nBạn sẽ phải quét lại mã QR trên bàn khi muốn order.',
+                  )
+                ) {
+                  api
+                    .del('/order/session')
+                    .catch(() => undefined)
+                    .finally(() => {
+                      tokenStore.clearTableToken();
+                      setTable(null);
+                    });
+                }
+              }}
+              type="button"
+            >
+              ✕ Kết thúc phiên này
+            </button>
           </div>
         ) : null}
 

@@ -3,6 +3,7 @@ node_modules/
 dist/
 web/node_modules/
 web/dist/
+*.tsbuildinfo
 
 # Ảnh món ăn do Admin tải lên (giữ thư mục, không commit file)
 uploads/*

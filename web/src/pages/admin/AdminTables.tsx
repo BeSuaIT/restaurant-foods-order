@@ -115,6 +115,47 @@ export function AdminTables() {
     }
   };
 
+  /**
+   * Sao chép URL (chứa mã QR) của 1 bàn vào clipboard.
+   *
+   * Clipboard API chỉ chạy trên ngữ cảnh bảo mật (HTTPS hoặc localhost). Khi
+   * truy cập bằng IP trong mạng nội bộ (http://100.100.1.5) thì `navigator.clipboard`
+   * là undefined, nên cần fallback dùng textarea tạm + document.execCommand.
+   */
+  const copyText = async (text: string, what: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (!ok) throw new Error('execCommand thất bại');
+      }
+      toast.success(`Đã sao chép ${what}: ${text}`);
+    } catch {
+      // Cuối cùng: hiện đường dẫn để người dùng tự copy
+      toast.error('Trình duyệt không cho sao chép tự động. Đường dẫn: ' + text);
+    }
+  };
+
+  const copyQrUrl = (t: RestTable) => {
+    if (!t.qr_url) return;
+    void copyText(t.qr_url, `đường dẫn QR bàn ${t.code}`);
+  };
+
+  const copyAllQrUrls = () => {
+    const list = rows.filter((t) => t.qr_url).map((t) => `${t.code}\t${t.qr_url}`);
+    if (list.length === 0) return toast.error('Chưa có bàn nào có đường dẫn QR.');
+    void copyText(list.join('\n'), `${list.length} đường dẫn QR`);
+  };
+
   const regenerate = async (t: RestTable) => {
     try {
       await api.post(`/admin/tables/${t.id}/regenerate-qr`);
@@ -158,6 +199,15 @@ export function AdminTables() {
               </option>
             ))}
           </select>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => copyAllQrUrls()}
+            disabled={busy || rows.length === 0}
+            title="Sao chép đường dẫn QR của tất cả bàn (mỗi dòng: mã bàn + URL)"
+            type="button"
+          >
+            📋 Sao chép toàn bộ URL
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={openSheet} disabled={busy} type="button">
             🖨 In toàn bộ thẻ QR
           </button>
@@ -173,7 +223,19 @@ export function AdminTables() {
     >
       <div className="alert alert-info">
         📱 In thẻ QR và dán lên mặt bàn. Khách quét mã sẽ tự động vào màn nhập tên + số điện thoại rồi order.
-        Trường <strong>URL</strong> bên dưới là địa chỉ chứa mã QR — đảm bảo <code>PUBLIC_URL</code> trong cấu hình đang trỏ đúng.
+        Đường dẫn QR là địa chỉ chứa mã — đảm bảo <code>PUBLIC_URL</code> trong cấu hình đang trỏ đúng.
+        <ul style={{ margin: '8px 0 0 18px' }}>
+          <li>
+            Bấm vào ô <strong>Đường dẫn QR</strong> (hoặc 📋) để sao chép đường dẫn của bàn đó.
+          </li>
+          <li>
+            <strong>Sao chép toàn bộ URL</strong> để lấy đường dẫn của tất cả bàn, mỗi dòng "mã bàn + URL".
+          </li>
+          <li>
+            <strong>In toàn bộ thẻ QR</strong> mở trang in riêng: mỗi thẻ 50×70mm, 4 thẻ/trang A4, tự
+            động in khi mã QR đã nạp xong.
+          </li>
+        </ul>
       </div>
 
       {state.loading ? (
@@ -200,7 +262,7 @@ export function AdminTables() {
                 <th className="right">Số chỗ</th>
                 <th className="right">Đơn đang mở</th>
                 <th>Trạng thái</th>
-                <th>Đường dẫn QR</th>
+                <th>Đường dẫn QR (bấm để copy)</th>
                 <th className="right">Thao tác</th>
               </tr>
             </thead>
@@ -224,10 +286,19 @@ export function AdminTables() {
                   <td>
                     <span className={`badge ${t.is_active ? 'badge-ok' : ''}`}>{t.is_active ? 'Hoạt động' : 'Đã tắt'}</span>
                   </td>
-                  <td className="tiny mono muted">
-                    <div className="truncate" style={{ maxWidth: 240 }} title={t.qr_url}>
-                      {t.qr_url ?? '—'}
-                    </div>
+                  <td>
+                    <button
+                      className="qr-url"
+                      onClick={() => copyQrUrl(t)}
+                      disabled={!t.qr_url}
+                      title={t.qr_url ? 'Bấm để sao chép đường dẫn này' : 'Chưa có đường dẫn'}
+                      type="button"
+                    >
+                      <span className="qr-url-text">{t.qr_url ?? '—'}</span>
+                      <span className="qr-url-ico" aria-hidden>
+                        📋
+                      </span>
+                    </button>
                   </td>
                   <td>
                     <div className="row" style={{ gap: 5, justifyContent: 'flex-end' }}>
@@ -337,47 +408,56 @@ export function AdminTables() {
         ) : null}
       </Modal>
 
-      {/* ---- Bảng QR để in ---- */}
-      <Modal
-        open={!!sheet}
-        size="lg"
-        title="In thẻ QR cho các bàn"
-        onClose={() => setSheet(null)}
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setSheet(null)} type="button">
-              Đóng
-            </button>
-            <button className="btn" onClick={() => window.print()} type="button">
-              🖨 In toàn bộ thẻ QR
-            </button>
-          </>
-        }
-      >
-        {sheet ? (
-          <>
-            <div className="alert alert-info no-print">
-              Cắt từng thẻ và dán lên mặt bàn. Có thể in nhiều bản của cùng một mã QR.
-            </div>
-            <div className="qr-sheet">
-              {sheet.map((q) => (
-                <div className="qr-card" key={q.id}>
-                  <div style={{ fontSize: 19, fontWeight: 800 }}>{q.name}</div>
-                  <div className="tiny muted" style={{ marginBottom: 7 }}>
-                    {q.branch_name ? `${q.branch_name} · ` : ''}
-                    {q.area ?? '—'} · {q.seats} chỗ
-                  </div>
-                  <img src={q.qr} alt={`QR bàn ${q.code}`} />
-                  <div style={{ fontSize: 16, fontWeight: 800, marginTop: 7, color: 'var(--brand-dark)' }}>{q.code}</div>
-                  <div className="tiny" style={{ fontWeight: 600 }}>
-                    📱 Quét để gọi món
-                  </div>
+      {/* Xem trước thẻ QR ngay trên trang này (không phải cửa sổ in) */}
+      {sheet ? (
+        <Modal
+          open={!!sheet}
+          size="lg"
+          title="Xem trước thẻ QR"
+          onClose={() => setSheet(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setSheet(null)} type="button">
+                Đóng
+              </button>
+              <button
+                className="btn"
+                onClick={() => {
+                  setSheet(null);
+                  window.open(
+                    `/admin/tables/print${branchFilter === '' ? '' : `?branch_id=${branchFilter}`}`,
+                    '_blank',
+                  );
+                }}
+                type="button"
+              >
+                🖨 Mở trang in
+              </button>
+            </>
+          }
+        >
+          <div className="alert alert-info no-print">
+            Xem trước {sheet.length} thẻ. Bấm <strong>Mở trang in</strong> để in ra giấy thật — trang in
+            đặt kích thước thẻ đúng chuẩn và chờ mã QR nạp xong mới in, nên không bị mờ/cắt như lần trước.
+          </div>
+          <div className="qr-sheet">
+            {sheet.map((q) => (
+              <div className="qr-card" key={q.id}>
+                <div style={{ fontSize: 19, fontWeight: 800 }}>{q.name}</div>
+                <div className="tiny muted" style={{ marginBottom: 7 }}>
+                  {q.branch_name ? `${q.branch_name} · ` : ''}
+                  {q.area ?? '—'} · {q.seats} chỗ
                 </div>
-              ))}
-            </div>
-          </>
-        ) : null}
-      </Modal>
+                <img src={q.qr} alt={`QR bàn ${q.code}`} />
+                <div style={{ fontSize: 16, fontWeight: 800, marginTop: 7, color: 'var(--brand-dark)' }}>{q.code}</div>
+                <div className="tiny" style={{ fontWeight: 600 }}>
+                  📱 Quét để gọi món
+                </div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      ) : null}
 
       <ConfirmDialog
         open={!!deleting}

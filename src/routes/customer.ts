@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { query } from '../db.js';
+import { query, queryOne } from '../db.js';
 import { badRequest, isValidVietnamPhone, normalizePhone, notFound, randomToken } from '../utils.js';
 import { attachTableToken, requireTableSession } from '../middleware/auth.js';
 import { asyncRoute, ok } from '../middleware/errors.js';
 import {
   addItem,
   clearItems,
+  deleteDraftOrder,
   getOrderByNo,
   getOrCreateDraft,
   getSessionByToken,
@@ -267,6 +268,38 @@ publicRouter.post(
   }),
 );
 
+/**
+ * Khách bỏ phiên (không order nữa).
+ *
+ * Quét QR xong nhập tên/điện thoại nhưng khách đổi ý thì bấm "Huỷ phiên" ở giao diện
+ * để đơn nháp không bị kẹt lại. Xoá cả đơn nháp lẫn phiên bàn để lần quét sau tạo
+ * phiên mới hoàn toàn sạch (tránh dồn nhiều mã đơn rác).
+ */
+publicRouter.delete(
+  '/order/session',
+  asyncRoute(async (req, res) => {
+    const session = await requireSession(req);
+
+    // Chỉ xoá được đơn nháp; nếu khách đã gửi món thì giữ lại để nhà hàng xử lý.
+    const draft = await queryOne<{ order_no: string }>(
+      "SELECT order_no FROM orders WHERE session_token = $1 AND status = 'draft' LIMIT 1",
+      [session.token],
+    );
+    let deletedDraft = false;
+    if (draft) {
+      const order = await getOrderByNo(draft.order_no);
+      if (order) {
+        await deleteDraftOrder(order);
+        deletedDraft = true;
+      }
+    }
+
+    await query('DELETE FROM table_sessions WHERE token = $1', [session.token]);
+
+    ok(res, { deleted: true, deleted_draft: deletedDraft });
+  }),
+);
+
 /** Theo dõi trạng thái 1 đơn (màn chờ phía khách) */
 publicRouter.get(
   '/order/:orderNo',
@@ -284,6 +317,8 @@ publicRouter.get(
   '/session/me',
   asyncRoute(async (req, res) => {
     const s = await requireSession(req);
+    // Ghi nhận hoạt động: dùng last_seen_at để dọn phiên bàn "bỏ quên" sau 24h.
+    await query('UPDATE table_sessions SET last_seen_at = NOW() WHERE id = $1', [s.id]);
     ok(res, {
       token: s.token,
       customer_name: s.customer_name,

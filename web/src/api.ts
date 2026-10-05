@@ -294,6 +294,8 @@ export type StreamEvent =
   | { type: 'hello'; kind: 'staff' | 'table' }
   | { type: 'order.created' | 'order.updated' | 'order.paid' | 'order.cancelled'; orderNo: string; tableId: number | null; status: string }
   | { type: 'menu.updated' | 'table.updated' }
+  /** Admin vừa đăng/gỡ một thông báo nội bộ */
+  | { type: 'announcement.updated' }
   | { type: 'heartbeat' };
 
 export function useLiveStream(token: string | null, onEvent: (e: StreamEvent) => void) {

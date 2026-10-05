@@ -180,8 +180,8 @@ async function main() {
 
   /* ---------------- 6. Nhân viên nhận order ---------------- */
   section('6. Nhân viên "order" xác nhận nhận order');
-  const lo = await login('order', '1224');
-  check('Đăng nhập order/1224', lo.status === 200 && !!lo.data?.token, lo.data?.user?.full_name);
+  const lo = await login('order', '1234');
+  check('Đăng nhập order/1234', lo.status === 200 && !!lo.data?.token, lo.data?.user?.full_name);
   const tkOrder = lo.data?.token;
   check('Role của order là staff', lo.data?.user?.role === 'staff', lo.data?.user?.role);
 

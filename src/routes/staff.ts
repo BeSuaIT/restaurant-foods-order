@@ -9,6 +9,7 @@ import { badRequest, forbidden, notFound, toInt } from '../utils.js';
 import {
   confirmOrder,
   dashboardStats,
+  deleteDraftOrder,
   getOrderByNo,
   listOrders,
   markPaid,
@@ -24,6 +25,11 @@ import {
   normalizeDiscountCode,
   scopeBranchId,
 } from '../services/branch.js';
+import {
+  listAnnouncementsForUser,
+  markAllAnnouncementsRead,
+  markAnnouncementRead,
+} from '../services/announcement.service.js';
 import type { Branch, Order, OrderStatus, RestTable } from '../types.js';
 
 export const staffRouter = Router();
@@ -124,6 +130,28 @@ staffRouter.get(
   asyncRoute(async (req, res) => {
     const { rows } = await listOrders({ statuses: ['confirmed', 'served'], branchId: branchFilter(req), limit: 200 });
     ok(res, rows);
+  }),
+);
+
+/**
+ * Đơn chưa gửi món (draft) — khách đã quét QR + nhập tên/điện thoại nhưng chưa
+ * bấm "Gửi đơn". Màn "Danh sách Order" có tab riêng để nhân viên thấy & xoá,
+ * tránh đơn nháp dồn lại vô ích mỗi ngày.
+ */
+staffRouter.get(
+  '/orders/drafts',
+  asyncRoute(async (req, res) => {
+    const { rows, total } = await listOrders({ statuses: ['draft'], branchId: branchFilter(req), limit: 200 });
+    ok(res, { rows, total });
+  }),
+);
+
+/** Nhân viên xoá đơn chưa gửi (draft) của khách. */
+staffRouter.delete(
+  '/orders/:orderNo/draft',
+  asyncRoute(async (req, res) => {
+    const order = await loadOrderByNo(req, req.params.orderNo);
+    ok(res, await deleteDraftOrder(order));
   }),
 );
 
@@ -307,6 +335,47 @@ staffRouter.post(
       [order.id, u.id, u.full_name],
     );
     ok(res, await getOrderByNo(order.order_no, true));
+  }),
+);
+
+/* ------------------------------------------------------------------ *
+ *  THÔNG BÁO NỘI BỘ
+ *
+ *  Nhân viên đọc thông báo Admin gửi. Trạng thái "đã đọc" lưu theo từng tài khoản
+ *  nên nhân viên nhận ca mới vẫn thấy các thông báo cũ chưa đọc của mình.
+ * ------------------------------------------------------------------ */
+
+/** Danh sách thông báo + số đếm chưa đọc (dùng cho trang thông báo & badge sidebar). */
+staffRouter.get(
+  '/announcements',
+  asyncRoute(async (req, res) => {
+    ok(res, await listAnnouncementsForUser(req.staff!.id));
+  }),
+);
+
+/** Số thông báo chưa đọc — gọi nhẹ cho badge (không tải cả nội dung). */
+staffRouter.get(
+  '/announcements/unread-count',
+  asyncRoute(async (req, res) => {
+    const { unread_count } = await listAnnouncementsForUser(req.staff!.id);
+    ok(res, { unread_count });
+  }),
+);
+
+/** Đánh dấu 1 thông báo đã đọc. */
+staffRouter.post(
+  '/announcements/:id/read',
+  asyncRoute(async (req, res) => {
+    const id = toInt(req.params.id, 0);
+    ok(res, await markAnnouncementRead(id, req.staff!.id));
+  }),
+);
+
+/** Đánh dấu đã đọc tất cả. */
+staffRouter.post(
+  '/announcements/read-all',
+  asyncRoute(async (req, res) => {
+    ok(res, await markAllAnnouncementsRead(req.staff!.id));
   }),
 );
 
