@@ -1,0 +1,23 @@
+# Dependency & build output
+node_modules/
+dist/
+web/node_modules/
+web/dist/
+
+# Ảnh món ăn do Admin tải lên (giữ thư mục, không commit file)
+uploads/*
+!uploads/.gitkeep
+
+# Bí mật — KHÔNG BAO GIỜ commit
+.env
+.env.local
+tools/deploy.config.json
+
+# Công cụ của agent (skill thiết kế UI), không thuộc mã nguồn app
+.agents/
+skills-lock.json
+
+tools/node_modules/
+*.log
+.DS_Store
+Thumbs.db
