@@ -142,6 +142,8 @@ export function AdminOptionGroups() {
           + Thêm nhóm
         </button>
       }
+      onRefresh={state.reload}
+      refreshing={state.loading}
     >
       <div className="alert alert-info">
         💡 Ví dụ: tạo nhóm <strong>"Nhân thêm"</strong> (chọn nhiều, tối đa 5) với các mục <em>Thịt nướng +15.000đ</em>,{' '}

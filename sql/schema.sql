@@ -8,13 +8,29 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- -------------------------------------------------------------
 -- ENUM
 -- -------------------------------------------------------------
+-- staff = phục vụ bàn, kitchen = phục vụ bếp
 DO $$ BEGIN
-  CREATE TYPE user_role AS ENUM ('admin', 'staff');
+  CREATE TYPE user_role AS ENUM ('admin', 'staff', 'kitchen');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- Type đã tồn tại từ lần chạy trước thì bổ sung giá trị mới.
+-- LƯU Ý: các câu "ALTER TYPE ... ADD VALUE" được scripts/migrate.ts tách ra chạy
+-- trước & commit riêng, vì PG không cho dùng giá trị enum vừa thêm trong cùng
+-- transaction (sẽ báo "unsafe use of new value ... of enum type").
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'kitchen';
 
+-- Quy trình đầy đủ (bếp tham gia):
+--   draft → pending (khách gửi) → confirmed (PV bàn nhận)
+--   → sent_kitchen (PV bàn chuyển bếp) → kitchen_accepted (bếp nhận)
+--   → ready_to_serve (bếp làm xong, trả PV bàn) → served (PV bàn nhận) → paid
+-- sent_kitchen/kitchen_accepted/ready_to_serve chỉ tồn tại ở DB mới;
+-- quy trình cũ (không qua bếp) vẫn chạy được vì confirmed → served vẫn hợp lệ.
+-- (3 câu ALTER TYPE bên dưới do scripts/migrate.ts chạy riêng — xem ghi chú enum.)
 DO $$ BEGIN
   CREATE TYPE order_status AS ENUM ('draft', 'pending', 'confirmed', 'served', 'paid', 'cancelled');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'sent_kitchen';
+ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'kitchen_accepted';
+ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'ready_to_serve';
 
 DO $$ BEGIN
   CREATE TYPE payment_method AS ENUM ('cash', 'transfer');
@@ -111,32 +127,6 @@ CREATE INDEX IF NOT EXISTS idx_table_sessions_table ON table_sessions(table_id);
 CREATE INDEX IF NOT EXISTS idx_table_sessions_seen ON table_sessions(last_seen_at);
 
 -- -------------------------------------------------------------
--- THÔNG BÁO NỘI BỘ (Admin soạn -> nhân viên đọc)
--- Nội dung lưu dạng HTML đã lọc an toàn (tiêu đề + nội dung + ảnh).
--- published_at = thời điểm đẩy thông báo; chỉ thông báo đã đăng mới hiện với nhân viên.
--- -------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS announcements (
-  id              SERIAL PRIMARY KEY,
-  title           TEXT NOT NULL,
-  content         TEXT NOT NULL DEFAULT '',
-  image_url       TEXT,
-  is_published    BOOLEAN NOT NULL DEFAULT TRUE,
-  published_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_by      INT REFERENCES users(id) ON DELETE SET NULL,
-  created_by_name TEXT,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Mỗi nhân viên đã đọc thông báo nào (giữ trạng thái "đã đọc" bền vững)
-CREATE TABLE IF NOT EXISTS announcement_reads (
-  announcement_id INT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
-  user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  read_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (announcement_id, user_id)
-);
-
--- -------------------------------------------------------------
 -- NHÓM LỰA CHỌN ĐI KÈM (VD: "Nhân thêm", "Sốt chấm", "Mức cay")
 -- -------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS option_groups (
@@ -223,6 +213,19 @@ CREATE TABLE IF NOT EXISTS orders (
   confirmed_at     TIMESTAMPTZ,
   rejected_reason  TEXT,
 
+  -- phục vụ bếp nhận đơn (sau khi phục vụ bàn chuyển qua)
+  kitchen_received_at     TIMESTAMPTZ,
+  kitchen_received_by     INT REFERENCES users(id) ON DELETE SET NULL,
+  kitchen_received_by_name TEXT,
+  -- bếp làm xong, chờ/phục vụ bàn nhận lại
+  kitchen_done_at         TIMESTAMPTZ,
+  kitchen_done_by         INT REFERENCES users(id) ON DELETE SET NULL,
+  kitchen_done_by_name    TEXT,
+  -- bếp trả lại cho phục vụ bàn; phục vụ bàn nhận -> served
+  sent_to_kitchen_at       TIMESTAMPTZ,
+  sent_to_kitchen_by       INT REFERENCES users(id) ON DELETE SET NULL,
+  sent_to_kitchen_by_name  TEXT,
+
   -- phục vụ
   served_at        TIMESTAMPTZ,
   served_by        INT REFERENCES users(id) ON DELETE SET NULL,
@@ -252,6 +255,10 @@ CREATE TABLE IF NOT EXISTS order_items (
   options_total    NUMERIC(12,2) NOT NULL DEFAULT 0,
   line_total       NUMERIC(12,2) NOT NULL DEFAULT 0,
   sort_order       INT  NOT NULL DEFAULT 0,
+  -- Bếp tick từng món đã xong. NULL = chưa làm xong.
+  kitchen_done_at      TIMESTAMPTZ,
+  kitchen_done_by      INT REFERENCES users(id) ON DELETE SET NULL,
+  kitchen_done_by_name TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
@@ -272,7 +279,7 @@ CREATE TABLE IF NOT EXISTS order_events (
   event_type  TEXT NOT NULL,
   from_status order_status,
   to_status   order_status,
-  actor_type  TEXT NOT NULL DEFAULT 'system',   -- customer | staff | admin | system
+  actor_type  TEXT NOT NULL DEFAULT 'system',   -- customer | staff | kitchen | admin | system
   actor_id    TEXT,
   actor_name  TEXT,
   detail      JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -291,7 +298,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DO $$ DECLARE t TEXT; BEGIN
-  FOREACH t IN ARRAY ARRAY['users','rest_tables','option_groups','dishes','orders','branches','discount_codes','announcements'] LOOP
+  FOREACH t IN ARRAY ARRAY['users','rest_tables','option_groups','dishes','orders','branches','discount_codes'] LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_%s_updated_at ON %I;', t, t);
     EXECUTE format(
       'CREATE TRIGGER trg_%s_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION set_updated_at();',
@@ -317,6 +324,29 @@ CREATE INDEX IF NOT EXISTS idx_rest_tables_branch  ON rest_tables(branch_id);
 CREATE INDEX IF NOT EXISTS idx_orders_branch       ON orders(table_id);
 -- Dọn đơn nháp (draft) quá hạn: index riêng cho status='draft'
 CREATE INDEX IF NOT EXISTS idx_orders_draft        ON orders(created_at) WHERE status = 'draft';
-CREATE INDEX IF NOT EXISTS idx_announcements_pub   ON announcements(published_at DESC) WHERE is_published;
-CREATE INDEX IF NOT EXISTS idx_announcement_reads  ON announcement_reads(user_id);
+
+-- -------------------------------------------------------------
+-- PHỤC VỤ BẾP (thêm sau) — nhật ký ai nhận/đã làm xong/trả lại
+-- -------------------------------------------------------------
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS kitchen_received_at     TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS kitchen_received_by     INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS kitchen_received_by_name TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS kitchen_done_at         TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS kitchen_done_by         INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS kitchen_done_by_name    TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS sent_to_kitchen_at       TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS sent_to_kitchen_by       INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS sent_to_kitchen_by_name  TEXT;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS kitchen_done_at      TIMESTAMPTZ;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS kitchen_done_by      INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS kitchen_done_by_name TEXT;
+-- Bảng kế bếp hay đọc 2 trạng thái này nhất -> index riêng theo cơ sở.
+CREATE INDEX IF NOT EXISTS idx_orders_kitchen ON orders(created_at)
+  WHERE status IN ('sent_kitchen', 'kitchen_accepted');
+
+-- -------------------------------------------------------------
+-- GỠ TÍNH NĂNG THÔNG BÁO NỘI BỘ (đã bỏ khỏi hệ thống) — dọn bảng cũ nếu còn.
+-- -------------------------------------------------------------
+DROP TABLE IF EXISTS announcement_reads;
+DROP TABLE IF EXISTS announcements;
 

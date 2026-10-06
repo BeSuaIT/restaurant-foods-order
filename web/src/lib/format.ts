@@ -78,6 +78,19 @@ export function timeAgo(iso: string | null | undefined): string {
   return formatDate(iso);
 }
 
+/** Thời gian đã trôi qua, dạng "m:ss" hoặc "h:mm:ss" — dùng cho đồng hồ chạy. */
+export function elapsedClock(from: string | null, now: number = Date.now()): string {
+  if (!from) return '0:00';
+  const a = new Date(from).getTime();
+  if (Number.isNaN(a)) return '0:00';
+  const secs = Math.max(0, Math.floor((now - a) / 1000));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
 export function durationBetween(from: string | null, to: string | null): string {
   if (!from) return '—';
   const a = new Date(from).getTime();

@@ -49,6 +49,11 @@ export function AdminDashboard() {
       actions={
         <BranchFilter branchFilter={branchFilter} onChange={setBranchFilter} branches={branches.data ?? []} />
       }
+      onRefresh={() => {
+        stats.reload();
+        recent.reload();
+      }}
+      refreshing={stats.loading || recent.loading}
     >
       {stats.loading ? (
         <div className="loading-box">Đang tải...</div>

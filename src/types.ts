@@ -1,10 +1,57 @@
-export type UserRole = 'admin' | 'staff';
+/** admin = quản trị · staff = phục vụ bàn · kitchen = phục vụ bếp */
+export type UserRole = 'admin' | 'staff' | 'kitchen';
 
-export type OrderStatus = 'draft' | 'pending' | 'confirmed' | 'served' | 'paid' | 'cancelled';
+export const ROLE_LABEL: Record<UserRole, string> = {
+  admin: 'Quản trị',
+  staff: 'Phục vụ bàn',
+  kitchen: 'Phục vụ bếp',
+};
+
+/**
+ * Quy trình đơn:
+ *   draft            khách đang chọn món (chưa gửi)
+ *   pending          ① khách đã gửi — chờ phục vụ bàn nhận
+ *   confirmed        ② phục vụ bàn đã nhận
+ *   sent_kitchen     ③ phục vụ bàn chuyển qua bếp
+ *   kitchen_accepted ④ bếp đã nhận (đang nấu, tick từng món)
+ *   ready_to_serve   ⑥ bếp làm xong, trả lại phục vụ bàn
+ *   served           ⑦ phục vụ bàn đã phục vụ khách
+ *   paid             ⑧ khách thanh toán — đơn hoàn thành
+ *   cancelled        đơn bị huỷ
+ */
+export type OrderStatus =
+  | 'draft'
+  | 'pending'
+  | 'confirmed'
+  | 'sent_kitchen'
+  | 'kitchen_accepted'
+  | 'ready_to_serve'
+  | 'served'
+  | 'paid'
+  | 'cancelled';
+
+/** Bếp chỉ được tick món khi đơn đang ở trạng thái bếp nhận. */
+export const KITCHEN_STATUSES: OrderStatus[] = ['sent_kitchen', 'kitchen_accepted'];
+
+/** Đơn chờ phục vụ bàn nhận lại từ bếp. */
+export const READY_FOR_WAITER_STATUSES: OrderStatus[] = ['ready_to_serve'];
+
+/**
+ * Đơn còn đang chạy — bàn đang phục vụ, chưa thanh toán.
+ * Gồm cả các bước qua bếp, nên bàn có đơn ở bếp vẫn bị tính là "đang dùng".
+ */
+export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  'pending',
+  'confirmed',
+  'sent_kitchen',
+  'kitchen_accepted',
+  'ready_to_serve',
+  'served',
+];
 
 export type PaymentMethod = 'cash' | 'transfer';
 
-export type ActorType = 'customer' | 'staff' | 'admin' | 'system';
+export type ActorType = 'customer' | 'staff' | 'kitchen' | 'admin' | 'system';
 
 export interface Branch {
   id: number;
@@ -36,27 +83,6 @@ export interface DiscountCode {
   is_active: boolean;
   used_count: number;
   created_at: string;
-}
-
-/** Thông báo nội bộ do Admin soạn gửi cho nhân viên */
-export interface Announcement {
-  id: number;
-  title: string;
-  /** HTML đã được lọc an toàn ở server */
-  content: string;
-  image_url: string | null;
-  is_published: boolean;
-  published_at: string;
-  created_by: number | null;
-  created_by_name: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Thông báo + trạng thái đã đọc của người đang đăng nhập */
-export interface AnnouncementWithRead extends Announcement {
-  is_read: boolean;
-  read_at: string | null;
 }
 
 export interface PublicUser {
@@ -150,6 +176,9 @@ export interface OrderItem {
   options_total: number;
   line_total: number;
   sort_order: number;
+  /** null = bếp chưa tick món này */
+  kitchen_done_at: string | null;
+  kitchen_done_by_name: string | null;
   options: OrderItemOption[];
 }
 
@@ -192,6 +221,17 @@ export interface Order {
   received_by_name: string | null;
   confirmed_at: string | null;
   rejected_reason: string | null;
+  /** ③ phục vụ bàn chuyển đơn qua bếp */
+  sent_to_kitchen_at: string | null;
+  sent_to_kitchen_by_name: string | null;
+  /** ④ phục vụ bếp nhận đơn */
+  kitchen_received_at: string | null;
+  kitchen_received_by: number | null;
+  kitchen_received_by_name: string | null;
+  /** ⑥ bếp làm xong món, trả lại phục vụ bàn */
+  kitchen_done_at: string | null;
+  kitchen_done_by: number | null;
+  kitchen_done_by_name: string | null;
   served_at: string | null;
   served_by: number | null;
   paid_at: string | null;

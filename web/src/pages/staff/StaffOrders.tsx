@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, tokenStore } from '../../lib/http';
-import { durationBetween, formatMoney, formatTime, timeAgo } from '../../lib/format';
+import { formatMoney, formatTime, timeAgo } from '../../lib/format';
 import { useAsync } from '../../hooks/useAsync';
 import { useLiveStream } from '../../hooks/useLiveStream';
 import { useStaffAuth } from '../../hooks/useStaffAuth';
@@ -8,19 +8,53 @@ import { ADMIN_SECTIONS, AppLayout, STAFF_SECTIONS } from '../../components/AppL
 import { BranchFilter } from '../../components/PageParts';
 import { BillModal } from '../../components/BillModal';
 import { OrderItems, OrderTimeline, StatusBadge } from '../../components/OrderBits';
+import { RealtimeClock } from '../../components/RealtimeClock';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
 import type { Branch, Order } from '../../types';
 
 /* ================================================================== *
- *  Danh sách order (chờ xác nhận + toàn bộ)
+ *  Danh sách order (chờ xác nhận · chưa chuyển bếp · bếp đã xong ·
+ *  đơn chưa order · tất cả)
  * ================================================================== */
+
+/** Nội dung hiển thị khi một tab không có đơn nào. */
+const EMPTY_VIEW: Record<
+  'pending' | 'waitKitchen' | 'kitchenDone' | 'draft' | 'all',
+  { icon: string; strong: string; small: string }
+> = {
+  pending: {
+    icon: '✅',
+    strong: 'Không có đơn chờ xác nhận',
+    small: 'Đơn của khách sẽ xuất hiện ở đây ngay khi khách gửi.',
+  },
+  waitKitchen: {
+    icon: '🍳',
+    strong: 'Không có đơn nào chờ chuyển bếp',
+    small: 'Đơn đã nhận sẽ nằm ở đây cho tới khi bạn bấm “Chuyển qua bếp”.',
+  },
+  kitchenDone: {
+    icon: '✅',
+    strong: 'Bếp chưa làm xong đơn nào',
+    small: 'Khi bếp nấu xong và trả lại, đơn sẽ hiện ở đây để bạn mang ra cho khách.',
+  },
+  draft: {
+    icon: '🗂',
+    strong: 'Không có đơn chưa order',
+    small: 'Tất cả phiên khách đều đã gửi món hoặc đã được dọn.',
+  },
+  all: {
+    icon: '📭',
+    strong: 'Chưa có đơn nào',
+    small: 'Đơn của khách sẽ xuất hiện ở đây ngay khi khách gửi.',
+  },
+};
 
 export function StaffOrders() {
   const toast = useToast();
   const { user } = useStaffAuth();
   const isAdmin = user?.role === 'admin';
-  const [tab, setTab] = useState<'pending' | 'draft' | 'all'>('pending');
+  const [tab, setTab] = useState<'pending' | 'waitKitchen' | 'kitchenDone' | 'draft' | 'all'>('pending');
   const [busy, setBusy] = useState<string | null>(null);
   const [detail, setDetail] = useState<Order | null>(null);
   const [rejecting, setRejecting] = useState<Order | null>(null);
@@ -62,11 +96,17 @@ export function StaffOrders() {
     }
   });
 
-  const act = async (order: Order, action: 'confirm' | 'serve' | 'unserve' | 'reject', msg: string, body?: unknown) => {
+  const act = async (
+    order: Order,
+    action: 'confirm' | 'sendKitchen' | 'serve' | 'unserve' | 'reject',
+    msg: string,
+  ) => {
     setBusy(order.order_no + action);
     try {
       if (action === 'confirm') {
         await api.post(`/staff/orders/${order.order_no}/confirm`);
+      } else if (action === 'sendKitchen') {
+        await api.post(`/staff/orders/${order.order_no}/send-kitchen`);
       } else if (action === 'serve') {
         await api.post(`/staff/orders/${order.order_no}/serve`, { served: true });
       } else if (action === 'unserve') {
@@ -87,16 +127,39 @@ export function StaffOrders() {
     }
   };
 
+  /** Nút làm mới — nạp lại cả 3 danh sách + đơn đang mở chi tiết. */
+  const refreshAll = () => {
+    state.reload();
+    all.reload();
+    drafts.reload();
+    if (detail) {
+      api.get<Order>(`/staff/orders/${detail.order_no}`).then(setDetail).catch(() => undefined);
+    }
+  };
+
   const pendingList = (state.data?.rows ?? []).filter((o) => o.status === 'pending');
   const draftList = drafts.data?.rows ?? [];
-  const rows = tab === 'pending' ? pendingList : tab === 'draft' ? draftList : (all.data?.rows ?? []);
+  // Đã nhận order nhưng chưa bấm chuyển qua bếp (PV bàn cần xử lý).
+  const waitKitchenList = (all.data?.rows ?? []).filter((o) => o.status === 'confirmed');
+  // Bếp đã nấu xong và trả lại, chờ PV bàn mang ra cho khách.
+  const kitchenDoneList = (all.data?.rows ?? []).filter((o) => o.status === 'ready_to_serve');
+  const rows =
+    tab === 'pending'
+      ? pendingList
+      : tab === 'waitKitchen'
+        ? waitKitchenList
+        : tab === 'kitchenDone'
+          ? kitchenDoneList
+          : tab === 'draft'
+            ? draftList
+            : (all.data?.rows ?? []);
 
   return (
     <AppLayout
       role="staff"
       sections={isAdmin ? ADMIN_SECTIONS : STAFF_SECTIONS}
       title="Danh sách Order"
-      subtitle={`${pendingList.length} đơn đang chờ xác nhận${draftList.length ? ` · ${draftList.length} đơn chưa order` : ''}`}
+      subtitle={`${pendingList.length} đơn chờ xác nhận · ${waitKitchenList.length} chưa chuyển bếp · ${kitchenDoneList.length} bếp đã làm xong${draftList.length ? ` · ${draftList.length} đơn chưa order` : ''}`}
       actions={
         isAdmin ? (
           <BranchFilter branchFilter={branchFilter} onChange={setBranchFilter} branches={branches.data ?? []} />
@@ -104,6 +167,8 @@ export function StaffOrders() {
           <span className="badge badge-info">🏢 {user.branch_name}</span>
         ) : null
       }
+      onRefresh={refreshAll}
+      refreshing={state.loading || all.loading || drafts.loading}
     >
       {user && user.role === 'staff' && user.branch_id === null ? (
         <div className="alert alert-warn">
@@ -115,6 +180,22 @@ export function StaffOrders() {
       <div className="s-tabs">
         <button className={`s-tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')} type="button">
           🕐 Chờ xác nhận {pendingList.length > 0 ? `(${pendingList.length})` : ''}
+        </button>
+        <button
+          className={`s-tab ${tab === 'waitKitchen' ? 'active' : ''}`}
+          onClick={() => setTab('waitKitchen')}
+          title="Đơn đã nhận nhưng chưa bấm chuyển qua bếp. Bấm vào để xem và chuyển bếp."
+          type="button"
+        >
+          🍳 Chưa chuyển bếp {waitKitchenList.length > 0 ? `(${waitKitchenList.length})` : ''}
+        </button>
+        <button
+          className={`s-tab ${tab === 'kitchenDone' ? 'active' : ''}`}
+          onClick={() => setTab('kitchenDone')}
+          title="Bếp đã nấu xong và trả lại, chờ phục vụ bàn mang ra cho khách."
+          type="button"
+        >
+          ✅ Bếp đã làm xong {kitchenDoneList.length > 0 ? `(${kitchenDoneList.length})` : ''}
         </button>
         <button
           className={`s-tab ${tab === 'draft' ? 'active' : ''}`}
@@ -147,17 +228,9 @@ export function StaffOrders() {
 
           {rows.length === 0 ? (
             <div className="empty">
-              <div className="icon">{tab === 'pending' ? '✅' : tab === 'draft' ? '🗂' : '📭'}</div>
-              <div className="strong">
-                {tab === 'pending' ? 'Không có đơn chờ xác nhận' : tab === 'draft' ? 'Không có đơn chưa order' : 'Chưa có đơn nào'}
-              </div>
-              <div className="small">
-                {tab === 'pending'
-                  ? 'Đơn của khách sẽ xuất hiện ở đây ngay khi khách gửi'
-                  : tab === 'draft'
-                    ? 'Tất cả phiên khách đều đã gửi món hoặc đã được dọn.'
-                    : 'Đơn của khách sẽ xuất hiện ở đây ngay khi khách gửi'}
-              </div>
+              <div className="icon">{EMPTY_VIEW[tab].icon}</div>
+              <div className="strong">{EMPTY_VIEW[tab].strong}</div>
+              <div className="small">{EMPTY_VIEW[tab].small}</div>
             </div>
           ) : (
             rows.map((o) => (
@@ -181,12 +254,18 @@ export function StaffOrders() {
                       </div>
                       <div className="o-meta-item">
                         <span className="k">Chờ:</span>
-                        <strong className={o.status === 'pending' ? 'warn' : 'muted'}>{durationBetween(o.started_at, null)}</strong>
+                        <RealtimeClock from={o.started_at} label="" />
                       </div>
                       {o.received_by_name ? (
                         <div className="o-meta-item">
-                          <span className="k">NV nhận:</span>
+                          <span className="k">PV nhận:</span>
                           <strong>{o.received_by_name}</strong>
+                        </div>
+                      ) : null}
+                      {o.kitchen_received_by_name ? (
+                        <div className="o-meta-item">
+                          <span className="k">Bếp nhận:</span>
+                          <strong>{o.kitchen_received_by_name}</strong>
                         </div>
                       ) : null}
                     </div>
@@ -232,9 +311,40 @@ export function StaffOrders() {
                     </>
                   ) : null}
 
+                  {/* ③ Đã nhận order: gửi qua bếp, hoặc tự phục vụ nếu không qua bếp */}
                   {o.status === 'confirmed' ? (
-                    <button className="btn btn-info btn-sm" disabled={busy === o.order_no + 'serve'} onClick={() => act(o, 'serve', 'Đã đánh dấu phục vụ xong')} type="button">
-                      {busy === o.order_no + 'serve' ? <span className="spinner" /> : '🍽'} Đã phục vụ xong
+                    <>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={busy === o.order_no + 'sendKitchen'}
+                        onClick={() => act(o, 'sendKitchen', `Đã chuyển đơn ${o.order_no} qua bếp`)}
+                        title="Chuyển đơn sang phục vụ bếp nấu"
+                        type="button"
+                      >
+                        {busy === o.order_no + 'sendKitchen' ? <span className="spinner" /> : '🍳'} Chuyển qua bếp
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy === o.order_no + 'serve'}
+                        onClick={() => act(o, 'serve', 'Đã đánh dấu phục vụ xong')}
+                        title="Dùng khi món không cần qua bếp (mì, phở bêng, nước)"
+                        type="button"
+                      >
+                        {busy === o.order_no + 'serve' ? <span className="spinner" /> : '🍽'} Không qua bếp — phục vụ luôn
+                      </button>
+                    </>
+                  ) : null}
+
+                  {/* ⑦ Bếp đã làm xong, trả lại phục vụ bàn */}
+                  {o.status === 'ready_to_serve' ? (
+                    <button
+                      className="btn btn-success btn-sm"
+                      disabled={busy === o.order_no + 'serve'}
+                      onClick={() => act(o, 'serve', `Đã nhận món từ bếp cho bàn ${o.table_name}`)}
+                      title="Bếp đã làm xong và trả lại"
+                      type="button"
+                    >
+                      {busy === o.order_no + 'serve' ? <span className="spinner" /> : '✓'} Nhận từ bếp — phục vụ khách
                     </button>
                   ) : null}
 
@@ -287,6 +397,21 @@ export function StaffOrders() {
                 <StatusBadge status={detail.status} />
                 <span className="tiny muted">Cập nhật {timeAgo(detail.updated_at)}</span>
               </div>
+              {/* Vòng bếp: ai gửi qua, ai nhận, ai làm xong */}
+              {detail.sent_to_kitchen_at || detail.kitchen_received_by_name || detail.kitchen_done_by_name ? (
+                <div className="alert alert-info" style={{ marginBottom: 12 }}>
+                  🍳{' '}
+                  {detail.sent_to_kitchen_at
+                    ? `Chuyển bếp lúc ${formatTime(detail.sent_to_kitchen_at)}${
+                        detail.sent_to_kitchen_by_name ? ` (${detail.sent_to_kitchen_by_name})` : ''
+                      }.`
+                    : null}{' '}
+                  {detail.kitchen_received_by_name
+                    ? `Bếp nhận: ${detail.kitchen_received_by_name}.`
+                    : 'Bếp chưa nhận.'}{' '}
+                  {detail.kitchen_done_by_name ? `Đã nấu xong (${detail.kitchen_done_by_name}).` : null}
+                </div>
+              ) : null}
               <OrderItems order={detail} />
               <h4 className="sub-head">Nhật ký</h4>
               <OrderTimeline order={detail} />
@@ -298,6 +423,24 @@ export function StaffOrders() {
               {detail.status === 'pending' ? (
                 <button className="btn btn-success" onClick={() => act(detail, 'confirm', 'Đã nhận order')} type="button">
                   Xác nhận nhận order
+                </button>
+              ) : null}
+              {detail.status === 'confirmed' ? (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => act(detail, 'sendKitchen', `Đã chuyển đơn ${detail.order_no} qua bếp`)}
+                  type="button"
+                >
+                  🍳 Chuyển qua bếp
+                </button>
+              ) : null}
+              {detail.status === 'ready_to_serve' ? (
+                <button
+                  className="btn btn-success"
+                  onClick={() => act(detail, 'serve', 'Đã nhận món từ bếp, phục vụ khách')}
+                  type="button"
+                >
+                  ✓ Nhận từ bếp — phục vụ khách
                 </button>
               ) : null}
             </div>

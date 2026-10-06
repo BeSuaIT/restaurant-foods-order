@@ -85,6 +85,7 @@ const USERS = [
   { username: 'order', password: '1234', full_name: 'Nguyễn Văn An', role: 'staff', branch: 'trung-tam', phone: '0900000002', note: 'Nhân viên phục vụ' },
   { username: 'check', password: '1234', full_name: 'Trần Thị Bình', role: 'staff', branch: 'trung-tam', phone: '0900000003', note: 'Nhân viên phục vụ' },
   { username: 'quan', password: '1234', full_name: 'Lê Minh Quân', role: 'staff', branch: 'phia-nam', phone: '0900000004', note: 'Nhân viên phục vụ cơ sở Phía Nam' },
+  { username: 'bep', password: '1234', full_name: 'Phan Thị Bếp', role: 'kitchen', branch: 'trung-tam', phone: '0900000005', note: 'Nhân viên phục vụ bếp' },
 ];
 
 const TABLES = [
@@ -445,7 +446,13 @@ async function main() {
   console.log('  NV Cơ sở Trung tâm : order / 1234  (Nguyễn Văn An)');
   console.log('  NV Cơ sở Trung tâm : check / 1234  (Trần Thị Bình)');
   console.log('  NV Cơ sở Phía Nam  : quan / 1234   (Lê Minh Quân)');
+  console.log('  PV Bếp Trung tâm  : bep / 1234    (Phan Thị Bếp)');
   console.log('  --------------------------------------------');
+  console.log('  URL:');
+  console.log(`    Khách      : ${config.publicUrl}/`);
+  console.log(`    Phục vụ bàn: ${config.publicUrl}/staff`);
+  console.log(`    Phục vụ bếp: ${config.publicUrl}/kitchen`);
+  console.log(`    Quản trị   : ${config.publicUrl}/admin`);
   console.log(`  Mã giảm giá mẫu   : GIAM10 (-10%)`);
   console.log(`  PUBLIC_URL         : ${config.publicUrl}`);
   console.log('==============================================');

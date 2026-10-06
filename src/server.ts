@@ -46,9 +46,10 @@ async function main() {
   const server = app.listen(config.port, '0.0.0.0', () => {
     console.log('----------------------------------------------');
     console.log(`  [OK] Server chạy tại http://0.0.0.0:${config.port}`);
-    console.log(`  Khách hàng : ${config.publicUrl}/`);
-    console.log(`  Nhân viên  : ${config.publicUrl}/staff`);
-    console.log(`  Admin      : ${config.publicUrl}/admin`);
+    console.log(`  Khách hàng  : ${config.publicUrl}/`);
+    console.log(`  Phục vụ bàn  : ${config.publicUrl}/staff`);
+    console.log(`  Phục vụ bếp : ${config.publicUrl}/kitchen`);
+    console.log(`  Quản trị    : ${config.publicUrl}/admin`);
     console.log('==============================================');
     startDraftPurge();
   });

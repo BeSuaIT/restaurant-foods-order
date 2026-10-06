@@ -104,3 +104,31 @@
     box-shadow: none;
   }
 }
+
+/* ---- Trang in phiếu bếp (/kitchen/print) ----
+   Phiếu bếp dán ở bếp, khổ 80mm cho vừa bề mặt nấu nướng. Cùng giờ A4 như
+   QrPrintPage nhưng khổ cắt giấy đích danh ở chính phiếu này. */
+
+@media print {
+  .kb-print-root {
+    background: #fff;
+    min-height: 0;
+  }
+  .kb-print-sheet {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .kb-print-tbl td {
+    /* Bep khong thao goi ngon khi bat nuoc nen chi giu dong mon khong dut doi,
+     khong can gian dong in day (chu se chong len nhau). */
+    break-inside: avoid;
+  }
+  .kb-print-head,
+  .kb-print-meta {
+    break-inside: avoid;
+  }
+}

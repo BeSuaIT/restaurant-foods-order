@@ -64,6 +64,27 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
   next();
 }
 
+/** Chỉ phục vụ bếp mới được phép (bếp nhận đơn, tick món, in đơn bếp). */
+export function requireKitchen(req: Request, _res: Response, next: NextFunction) {
+  if (!req.staff) return next(unauthorized());
+  if (req.staff.role !== 'kitchen') {
+    return next(forbidden('Chỉ phục vụ bếp mới được truy cập chức năng này.'));
+  }
+  next();
+}
+
+/**
+ * Chỉ phục vụ bàn mới được phép. Admin dùng chung màn phục vụ bàn nên vẫn
+ * vào được; phục vụ bếp thì không (bếp có bảng riêng).
+ */
+export function requireWaiter(req: Request, _res: Response, next: NextFunction) {
+  if (!req.staff) return next(unauthorized());
+  if (req.staff.role === 'kitchen') {
+    return next(forbidden('Phục vụ bếp không dùng được chức năng này.'));
+  }
+  next();
+}
+
 /** Gắn tableToken nếu có (không bắt buộc). */
 export function attachTableToken(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers['x-table-token'];

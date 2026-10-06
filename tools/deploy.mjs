@@ -297,7 +297,10 @@ async function uploadCode(conn) {
   await upload(conn, tar, remoteTar);
   console.log(`  Đã tải lên ${CFG.host}:${remoteTar}`);
 
-  await sh(conn, `mkdir -p ${CFG.appDir} && tar -xzf ${remoteTar} -C ${CFG.appDir} && rm -f ${remoteTar}`, { timeout: 180000 });
+  // tar không tự xoá file đã bị xoá ở local → dọn trước các thư mục mã nguồn
+  // do repo quản lý (giữ nguyên node_modules, uploads, .env, web/dist).
+  const managedDirs = ['src', 'scripts', 'sql', 'web/src'].map((d) => `${CFG.appDir}/${d}`).join(' ');
+  await sh(conn, `mkdir -p ${CFG.appDir} && rm -rf ${managedDirs} && tar -xzf ${remoteTar} -C ${CFG.appDir} && rm -f ${remoteTar}`, { timeout: 180000 });
   console.log(`  Đã giải nén vào ${CFG.appDir}`);
 
   fs.unlinkSync(tar);
@@ -524,8 +527,11 @@ async function main() {
     }
 
     console.log('\n\x1b[32m\x1b[1m✔ HOÀN TẤT!\x1b[0m');
-    console.log(`\n  Khách hàng : http://${CFG.host}/\n  Nhân viên  : http://${CFG.host}/staff\n  Admin      : http://${CFG.host}/admin`);
-    console.log(`\n  Tài khoản: admin/1234 · order/1234 · check/1234\n`);
+    console.log(`\n  Khách hàng  : http://${CFG.host}/`);
+    console.log(`  Phục vụ bàn  : http://${CFG.host}/staff`);
+    console.log(`  Phục vụ bếp : http://${CFG.host}/kitchen`);
+    console.log(`  Quản trị    : http://${CFG.host}/admin`);
+    console.log(`\n  Tài khoản: admin/1234 · order/1234 · check/1234 · bep/1234\n`);
   } finally {
     conn.end();
   }

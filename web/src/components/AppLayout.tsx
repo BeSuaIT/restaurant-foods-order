@@ -1,26 +1,36 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { initials } from '../lib/format';
-import { tokenStore } from '../lib/http';
+import { api, tokenStore } from '../lib/http';
 import { useAsync } from '../hooks/useAsync';
 import { useLiveStream } from '../hooks/useLiveStream';
 import { useStaffAuth } from '../hooks/useStaffAuth';
 import { useToast } from './Toast';
-import { useAnnouncementBadge } from './announcements';
-import { AnnouncementPopup } from './AnnouncementPopup';
-import type { DashboardStats, StaffUser } from '../types';
+import { ACTIVE_ORDER_STATUSES, ROLE_LABEL, type DashboardStats, type UserRole } from '../types';
+
+/** Tên/icon hiển thị ở đầu sidebar theo khu vực đang đăng nhập. */
+const BRAND_NAME: Record<UserRole, string> = {
+  admin: 'Quản trị',
+  staff: 'Nhà hàng',
+  kitchen: 'Bếp',
+};
+const BRAND_ICON: Record<UserRole, string> = {
+  admin: '🍜',
+  staff: '🍜',
+  kitchen: '🍳',
+};
 
 export interface NavItem {
   to: string;
   label: string;
   icon: string;
   end?: boolean;
-  /** Số đếm hiện trên item: pending = đơn chờ xác nhận, unpaid = hoá đơn chờ thu, draft = đơn chưa order, notif = thông báo chưa đọc */
-  badge?: 'pending' | 'unpaid' | 'draft' | 'notif';
+  /** Số đếm hiện trên item: pending = đơn chờ nhận, unpaid = hoá đơn chờ thu, draft = đơn chưa order, kitchenNew = đơn chờ bếp nhận */
+  badge?: 'pending' | 'unpaid' | 'draft' | 'kitchenNew';
 }
 
 interface Props {
-  role: 'admin' | 'staff';
+  role: UserRole;
   sections: { title: string; items: NavItem[] }[];
   children: ReactNode;
   title: string;
@@ -28,6 +38,10 @@ interface Props {
   actions?: ReactNode;
   /** Ẩn sidebar (trang in bill) */
   bare?: boolean;
+  /** Gọi lại dữ liệu trang khi bấm nút làm mới ở thanh trên cùng. */
+  onRefresh?: () => void;
+  /** Đang tải lại — nút làm mới hiện vòng quay. */
+  refreshing?: boolean;
 }
 
 /**
@@ -35,7 +49,17 @@ interface Props {
  * Sidebar điều hướng khác nhau theo role; đây là nơi thực thi
  * yêu cầu "chỉ Admin mới thấy quản lý tài khoản / món ăn / bàn QR / lịch sử order".
  */
-export function AppLayout({ role, sections, children, title, subtitle, actions, bare }: Props) {
+export function AppLayout({
+  role,
+  sections,
+  children,
+  title,
+  subtitle,
+  actions,
+  bare,
+  onRefresh,
+  refreshing,
+}: Props) {
   const { user, ready, logout } = useStaffAuth();
   const nav = useNavigate();
   const loc = useLocation();
@@ -44,23 +68,35 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
   const [live, setLive] = useState(false);
 
   // Chặn truy cập sai khu vực ngay từ giao diện.
-  // Admin được quyền của nhân viên nên vẫn vào được khu vực Vận hành.
+  // Admin được quyền của phục vụ bàn nên vẫn vào được khu vực Vận hành.
+  // Phục vụ bếp là một khu riêng, không lẫn vào 2 khu kia.
   useEffect(() => {
-    if (ready && user && user.role !== role && !(role === 'staff' && user.role === 'admin')) {
-      toast.error(
-        user.role === 'admin'
-          ? 'Tài khoản Admin cần đăng nhập tại màn hình Quản trị.'
-          : 'Tài khoản nhân viên không vào được khu vực Quản trị.',
-      );
-      nav(user.role === 'admin' ? '/admin' : '/staff', { replace: true });
-    }
+    if (!ready || !user) return;
+    const allowed =
+      user.role === role ||
+      (role === 'staff' && user.role === 'admin');
+    if (allowed) return;
+
+    const home: string =
+      user.role === 'admin' ? '/admin' : user.role === 'kitchen' ? '/kitchen' : '/staff';
+    toast.error(
+      user.role === 'admin'
+        ? 'Tài khoản Admin cần đăng nhập tại màn hình Quản trị.'
+        : user.role === 'kitchen'
+          ? 'Tài khoản phục vụ bếp không vào được khu vực này.'
+          : 'Tài khoản phục vụ bàn không vào được khu vực Quản trị.',
+    );
+    nav(home, { replace: true });
   }, [ready, user, role, nav, toast]);
 
   useEffect(() => setOpen(false), [loc.pathname]);
 
+  // Bếp không có quyền trên /api/staff nên thống kê của bếp lấy ở /api/kitchen.
+  const statsPath = role === 'kitchen' ? '/api/kitchen/stats' : '/api/staff/stats';
+
   const stats = useAsync<DashboardStats>(
     (signal) =>
-      fetch('/api/staff/stats', {
+      fetch(statsPath, {
         headers: {
           Authorization: `Bearer ${tokenStore.getStaffToken() ?? ''}`,
         },
@@ -71,7 +107,7 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
           if (!r.ok) throw new Error('Không tải được số liệu');
           return j.data as DashboardStats;
         }),
-    [role],
+    [role, statsPath],
   );
 
   useLiveStream(tokenStore.getStaffToken(), (e) => {
@@ -79,16 +115,20 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
     if (e.type.startsWith('order.') || e.type === 'menu.updated' || e.type === 'table.updated') {
       stats.reload();
     }
-    // Admin đăng thông báo mới -> làm mới số đếm chưa đọc
-    if (e.type === 'announcement.updated') reloadNotif();
   });
 
   const pending = stats.data?.counts.pending ?? 0;
-  const unpaid = (stats.data?.counts.confirmed ?? 0) + (stats.data?.counts.served ?? 0);
+  // Mọi đơn còn chạy đều là hoá địn chờ thu, kể cả đơn đang ở bếp.
+  const unpaid = useMemo(
+    () =>
+      (stats.data ? ACTIVE_ORDER_STATUSES : [])
+        .filter((s) => s !== 'pending')
+        .reduce((sum, s) => sum + (stats.data?.counts[s] ?? 0), 0),
+    [stats.data],
+  );
   const drafts = stats.data?.counts.draft ?? 0;
-
-  // Số thông báo chưa đọc — dùng chung context với trang "Thông báo".
-  const { unread: notifUnread, reload: reloadNotif } = useAnnouncementBadge();
+  // Đơn bếp vừa nhận được, chờ bếp bấm "Nhận đơn".
+  const kitchenNew = stats.data?.counts.sent_kitchen ?? 0;
 
   const badgeValue = (b?: NavItem['badge']) =>
     b === 'pending'
@@ -97,8 +137,8 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
         ? unpaid
         : b === 'draft'
           ? drafts
-          : b === 'notif'
-            ? notifUnread
+          : b === 'kitchenNew'
+            ? kitchenNew
             : 0;
 
   if (bare) return <>{children}</>;
@@ -122,10 +162,10 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
 
       <aside className={`s-sidebar no-print ${open ? 'open' : ''}`}>
         <div className="s-brand">
-          <div className="logo">🍜</div>
+          <div className="logo">{BRAND_ICON[role]}</div>
           <div className="grow">
-            <div className="name">{role === 'admin' ? 'Quản trị' : 'Nhà hàng'}</div>
-            <div className="role">{role === 'admin' ? 'Admin' : 'Nhân viên'}</div>
+            <div className="name">{BRAND_NAME[role]}</div>
+            <div className="role">{ROLE_LABEL[role]}</div>
           </div>
         </div>
 
@@ -166,7 +206,7 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
               <div className="rl">
                 {user.role === 'admin'
                   ? 'Quản trị viên'
-                  : `Nhân viên · ${user.branch_name ?? 'chưa gán cơ sở'}`}
+                  : `${ROLE_LABEL[user.role]} · ${user.branch_name ?? 'chưa gán cơ sở'}`}
               </div>
             </div>
             <button className="s-logout" onClick={doLogout} title="Đăng xuất" type="button">
@@ -189,6 +229,18 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
           </div>
           <div className="row gap-12">
             {actions}
+            {onRefresh ? (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={onRefresh}
+                disabled={refreshing}
+                title="Tải lại dữ liệu của trang này"
+                type="button"
+              >
+                <span className={refreshing ? 'spinner' : undefined} aria-hidden />
+                {refreshing ? 'Đang tải...' : 'Làm mới'}
+              </button>
+            ) : null}
             <span className={`s-live ${live ? 'on' : ''}`} title={live ? 'Đang kết nối thời gian thực' : 'Đang kết nối...'}>
               <span className="dot" />
               {live ? 'Trực tiếp' : '...'}
@@ -198,19 +250,16 @@ export function AppLayout({ role, sections, children, title, subtitle, actions, 
 
         <div className="s-content">{children}</div>
       </div>
-
-      {/* Popup thông báo mới: chỉ hiện 1 lần mỗi lần đăng nhập (xem AnnouncementPopup) */}
-      {!bare ? <AnnouncementPopup /> : null}
     </div>
   );
 }
 
 /** Nếu chưa đăng nhập thì chuyển tới trang login tương ứng */
-function RedirectToLogin({ role }: { role: 'admin' | 'staff' }) {
+function RedirectToLogin({ role }: { role: UserRole }) {
   const nav = useNavigate();
   const loc = useLocation();
   useEffect(() => {
-    nav(`${role === 'admin' ? '/admin' : '/staff'}/login?next=${encodeURIComponent(loc.pathname)}`, {
+    nav(`${role === 'admin' ? '/admin' : role === 'kitchen' ? '/kitchen' : '/staff'}/login?next=${encodeURIComponent(loc.pathname)}`, {
       replace: true,
     });
   }, [nav, role, loc.pathname]);
@@ -221,6 +270,9 @@ function RedirectToLogin({ role }: { role: 'admin' | 'staff' }) {
  *  Cấu hình menu theo role
  * ------------------------------------------------------------------ */
 
+/**
+ * Mục của phục vụ bàn.
+ */
 export const STAFF_SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: 'Vận hành',
@@ -228,7 +280,6 @@ export const STAFF_SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/staff/orders', label: 'Danh sách Order', icon: '📋', badge: 'pending' },
       { to: '/staff/payments', label: 'Hóa đơn chưa thanh toán', icon: '💳', badge: 'unpaid' },
       { to: '/staff/tables', label: 'Bàn đang phục vụ', icon: '🪑' },
-      { to: '/staff/notifications', label: 'Thông báo', icon: '📢', badge: 'notif' },
     ],
   },
   {
@@ -237,6 +288,21 @@ export const STAFF_SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/', label: 'Xem giao diện khách', icon: '📱' },
       { to: '/staff/login', label: 'Đổi tài khoản', icon: '🔑' },
     ],
+  },
+];
+
+/**
+ * Mục của phục vụ bếp — chỉ 2 mục: bảng bếp và in đơn bếp.
+ * Bếp không thấy danh sách order tổng, hóa đơn, bàn, món ăn hay cài đặt.
+ */
+export const KITCHEN_SECTIONS: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Bếp',
+    items: [{ to: '/kitchen', label: 'Bảng bếp', icon: '🍳', badge: 'kitchenNew', end: true }],
+  },
+  {
+    title: 'Khác',
+    items: [{ to: '/kitchen/login', label: 'Đổi tài khoản', icon: '🔑' }],
   },
 ];
 
@@ -254,8 +320,7 @@ export const ADMIN_SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/staff/orders', label: 'Danh sách Order', icon: '📋', badge: 'pending' },
       { to: '/staff/payments', label: 'Hóa đơn chưa thanh toán', icon: '💳', badge: 'unpaid' },
       { to: '/staff/tables', label: 'Bàn đang phục vụ', icon: '🪑' },
-      { to: '/staff/notifications', label: 'Thông báo', icon: '📢', badge: 'notif' },
-    ],
+      ],
   },
   {
     title: 'Quản lý (chỉ Admin)',
@@ -265,7 +330,6 @@ export const ADMIN_SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/admin/option-groups', label: 'Phần chọn đi kèm', icon: '⚙️' },
       { to: '/admin/tables', label: 'Quản lý bàn & mã QR', icon: '📱' },
       { to: '/admin/discount-codes', label: 'Mã giảm giá', icon: '🎟️' },
-      { to: '/admin/announcements', label: 'Thông báo nội bộ', icon: '📣' },
       { to: '/admin/history', label: 'Lịch sử order', icon: '🧾' },
       { to: '/admin/settings', label: 'Cài đặt cơ sở', icon: '🏢' },
     ],

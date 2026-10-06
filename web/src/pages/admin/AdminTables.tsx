@@ -222,6 +222,8 @@ export function AdminTables() {
           </button>
         </>
       }
+      onRefresh={state.reload}
+      refreshing={state.loading}
     >
       <div className="alert alert-info">
         📱 In thẻ QR và dán lên mặt bàn. Khách quét mã sẽ tự động vào màn nhập tên + số điện thoại rồi order.

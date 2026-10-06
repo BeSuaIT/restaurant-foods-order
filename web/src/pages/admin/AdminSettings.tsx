@@ -128,6 +128,8 @@ export function AdminSettings() {
           + Thêm cơ sở
         </button>
       }
+      onRefresh={state.reload}
+      refreshing={state.loading}
     >
       <div className="alert alert-info">
         🏢 Cơ sở dùng để <strong>phân tách bàn &amp; nhân viên</strong>:

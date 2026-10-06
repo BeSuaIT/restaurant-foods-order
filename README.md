@@ -15,8 +15,9 @@
 | Vai trò | Đường dẫn | Dùng để |
 | --- | --- | --- |
 | Khách | `/` hoặc `/t/<mã-bàn>` | Quét QR → vào bàn → chọn món → gửi đơn → theo dõi trạng thái |
-| Nhân viên | `/staff` | Nhận order · phục vụ · thu tiền · đơn chưa order · bàn đang phục vụ · thông báo |
-| Quản trị | `/admin` | Món ăn · nhóm tuỳ chọn · bàn & mã QR · cơ sở · mã giảm giá · thông báo · tài khoản · lịch sử · báo cáo |
+| Phục vụ bàn | `/staff` | Nhận order · chuyển bếp · phục vụ · thu tiền · đơn chưa order · bàn đang phục vụ |
+| Phục vụ bếp | `/kitchen` | Nhận đơn từ phục vụ bàn · tick món đã nấu xong · trả lại phục vụ bàn · in phiếu bếp |
+| Quản trị | `/admin` | Món ăn · nhóm tuỳ chọn · bàn & mã QR · cơ sở · mã giảm giá · tài khoản · lịch sử · báo cáo |
 
 > Hệ thống **không có đăng ký** — mọi tài khoản do Admin cấp.
 
@@ -33,16 +34,26 @@
 - **✕ Kết thúc phiên**: khách không order nữa thì xoá đơn nháp + đóng phiên, mời quét lại QR lần sau (tránh dồn đơn chưa order).
 - **Không xem lịch sử order** — lịch sử thuộc về nhà hàng (chỉ Admin xem được).
 
-### 👨‍🍳 Nhân viên
-- 3 tab: **🕐 Chờ xác nhận** · **🗂 Đơn chưa order** (đơn nháp của khách bỏ dở) · **Tất cả đơn**.
+### 👨‍🍳 Phục vụ bàn
+- 5 tab: **🕐 Chờ xác nhận** · **🍳 Chưa chuyển bếp** · **✅ Bếp đã làm xong** · **🗂 Đơn chưa order** (đơn nháp của khách bỏ dở) · **Tất cả đơn**.
 - Đơn chưa order hiện **tên + SĐT khách + bàn + thời điểm quét QR**; nhân viên **xoá được** từng đơn. Đơn nháp quá 24h tự dọn.
 - Danh sách đơn **đang chờ xác nhận** → *Xác nhận nhận order* / *Huỷ* / *Xem bill*.
-- Hệ thống ghi lại **ai nhận order** và **ai thu tiền** (có thể là hai người khác nhau).
+- Đơn đã nhận → **🍳 Chuyển qua bếp** hoặc **🍽 Không qua bếp — phục vụ luôn** (mì, phở, nước…).
+- Đơn bếp đã làm xong nằm ở tab **✅ Bếp đã làm xong** → *Nhận từ bếp — phục vụ khách*.
+- Hệ thống ghi lại **ai nhận order**, **ai nhận bếp**, **ai làm xong** và **ai thu tiền**.
 - Đơn đã phục vụ → màn **Hóa đơn chưa thanh toán**: nhập **mã giảm giá** (xem trước số tiền giảm), hoặc thu **tiền mặt**.
 - Bản đồ **bàn đang phục vụ** theo trạng thái đơn, tự cập nhật.
-- **📢 Thông báo**: xem thông báo nội bộ của Admin. **Mở ca (đăng nhập) sẽ có popup** nếu có thông báo chưa đọc, badge đếm số chưa đọc trên sidebar.
+- **Nút Làm mới** trên mọi màn có dữ liệu + **đồng hồ chạy realtime** trên màn chính.
 - **Chỉ thấy cơ sở của mình.** Thử xử lý đơn của cơ sở khác sẽ nhận `403`.
-- **Admin cũng dùng được màn nhân viên** và có thêm ô *lọc theo cơ sở*.
+- **Admin cũng dùng được màn phục vụ bàn** và có thêm ô *lọc theo cơ sở*.
+
+### 🍳 Phục vụ bếp
+- Bảng bếp **2 cột**: đơn **chờ nhận** và đơn **đang làm**, tự cập nhật realtime.
+- Hiện **mã đơn, bàn, tên/SĐT khách, danh sách món kèm tuỳ chọn + ghi chú**.
+- **Nhận đơn**, tick từng món đã nấu xong (thanh tiến độ theo số món).
+- **Bắt buộc tick đủ món** rồi mới bấm **Chuyển qua phục vụ bàn** (báo rõ món còn lại nếu chưa đủ).
+- **🖨 In phiếu bếp** (khổ A4, chỉ thông tin bếp — không phải bill).
+- Chỉ vào được khu bếp; gọi API khác sẽ bị chặn.
 
 ### 🛠 Admin
 - **Món ăn**: tên, ảnh, mô tả, giá, sẵn có/hết hàng, bật/tắt, gắn nhóm tuỳ chọn, giá riêng theo tuỳ chọn.
@@ -51,8 +62,7 @@
 - **🖨 In toàn bộ thẻ QR**: trang riêng `/admin/tables/print`, thẻ 50×70mm, **3 thẻ mỗi hàng trên A4**, tự gọi hộp thoại in sau khi ảnh QR nạp xong (mã in ra đủ lớn để quét).
 - **Cơ sở (chi nhánh)**: tên + địa chỉ + SĐT + ghi chú + **toạ độ (vĩ độ, kinh độ)** dùng cho chấm công vị trí; mọi bàn, tài khoản, đơn đều thuộc một cơ sở.
 - **Mã giảm giá**: mã + % giảm + khoảng thời gian áp dụng + **giới hạn số lần sử dụng** (0 = không giới hạn) + bật/tắt.
-- **📣 Thông báo nội bộ**: soạn thông báo dạng bài viết (**tiêu đề + nội dung định dạng + ảnh**), gửi cho toàn bộ nhân viên, gỡ đăng khi cần.
-- **Tài khoản**: phân vai trò, gán cơ sở, đặt lại mật khẩu.
+- **Tài khoản**: phân vai trò (Admin / Phục vụ bàn / Phục vụ bếp), gán cơ sở, đặt lại mật khẩu.
 - **Lịch sử order**: khách (tên + SĐT), giờ bắt đầu, giờ thanh toán, NV nhận order, NV thu tiền, mã giảm giá.
 - **Báo cáo doanh thu**: biểu đồ doanh thu theo ngày, khung giờ vàng, top món / nhân viên / bàn, tỉ trọng theo cơ sở / mã giảm giá, phễu đơn — chọn khoảng ngày và lọc theo cơ sở.
 - Lọc theo cơ sở trên mọi màn báo cáo và vận hành.
@@ -71,15 +81,18 @@ Khách quét QR trên bàn
    └─> Nhập họ tên + số điện thoại
         └─> Chọn món (kèm tuỳ chọn: thêm nhân, sốt, mức cay...)
              └─> "Gửi đơn" → màn "Đang chờ nhân viên xác nhận"
-                  └─> NV bấm "Xác nhận nhận order"
-                       └─> Màn khách TỰ ĐỘNG CẬP NHẬT (SSE) + thông báo
-                            └─> NV đánh dấu "Đã phục vụ xong"
-                                 └─> Màn "Hóa đơn chưa thanh toán"
-                                      └─> NV thu tiền (có thể nhập mã giảm giá của khách)
-                 └─> Mở popup hóa đơn & in bill 80mm (có ghi NV nhận order / NV thu tiền)
+                  └─> PV bàn bấm "Xác nhận nhận order"
+                       └─> Màn khách TỰ ĐỘNG CẬP NHẬT (SSE)
+                            └─> PV bàn "Chuyển qua bếp" (hoặc "Không qua bếp — phục vụ luôn")
+                                 └─> Bếp "Nhận đơn" → tick từng món → "Chuyển qua phục vụ bàn"
+                                      └─> PV bàn "Nhận từ bếp — phục vụ khách"
+                                           └─> Màn "Hóa đơn chưa thanh toán"
+                                                └─> PV bàn thu tiền (có thể nhập mã giảm giá của khách)
+                 └─> Mở popup hóa đơn & in bill 80mm (có ghi PV nhận order / PV thu tiền)
 ```
 
-Trạng thái đơn: `draft` → `pending` → `confirmed` → `served` → `paid` (kèm `cancelled`).
+Trạng thái đơn: `draft` → `pending` → `confirmed` → *(vòng bếp)* → `served` → `paid` (kèm `cancelled`).
+Vòng bếp: `confirmed` → `sent_kitchen` (PV bàn chuyển) → `kitchen_accepted` (bếp nhận) → `ready_to_serve` (bếp làm xong) → `served` (PV bàn nhận lại). Đơn không qua bếp đi thẳng `confirmed → served`.
 
 Tính tiền: `(giá món + tổng tiền tuỳ chọn) × số lượng`, trừ thêm mã giảm giá (nếu có).
 
@@ -134,12 +147,13 @@ npm start                 # Express phục vụ cả API và web tại :3000
 
 | Tài khoản | Mật khẩu | Vai trò | Cơ sở | Dùng để |
 | --- | --- | --- | --- | --- |
-| `admin` | `1234` | Admin | Tất cả | Quản trị + nhận order/thu tiền như nhân viên |
-| `order` | `1234` | Nhân viên | Cơ sở Trung tâm | Nhận order |
-| `check` | `1234` | Nhân viên | Cơ sở Trung tâm | Thu tiền |
-| `quan` | `1234` | Nhân viên | Cơ sở Phía Nam | Minh hoạ nhân viên ở cơ sở khác |
+| `admin` | `1234` | Admin | Tất cả | Quản trị + nhận order/thu tiền như phục vụ bàn |
+| `order` | `1234` | Phục vụ bàn | Cơ sở Trung tâm | Nhận order, chuyển bếp, thu tiền |
+| `check` | `1234` | Phục vụ bàn | Cơ sở Trung tâm | Nhận order, chuyển bếp, thu tiền |
+| `quan` | `1234` | Phục vụ bàn | Cơ sở Phía Nam | Minh hoạ phục vụ bàn ở cơ sở khác |
+| `bep` | `1234` | Phục vụ bếp | Cơ sở Trung tâm | Nhận đơn từ phục vụ bàn, tick món, trả lại |
 
-> `order` và `check` **cùng là nhân viên, quyền giống hệt**. Tách ra chỉ để minh hoạ việc hệ thống ghi được **ai nhận order** và **ai thu tiền**.
+> `order` và `check` **cùng là phục vụ bàn, quyền giống hệt**. Tách ra chỉ để minh hoạ việc hệ thống ghi được **ai nhận order** và **ai thu tiền**.
 >
 > ⚠️ Đây là tài khoản demo với mật khẩu yếu — **xoá hoặc đổi mật khẩu trước khi đưa lên Internet**.
 
@@ -163,17 +177,16 @@ npm start                 # Express phục vụ cả API và web tại :3000
 │   ├── routes/
 │   │   ├── customer.ts         # Tra cứu bàn, vào bàn, menu, giỏ hàng, gửi đơn, kết thúc phiên
 │   │   ├── auth.ts             # Đăng nhập nhân viên/Admin (kèm cơ sở)
-│   │   ├── staff.ts            # Nhận order, phục vụ, thu tiền (kèm mã giảm giá), đơn nháp,
-│   │   │                       # bàn, QR, thông báo
-│   │   ├── admin.ts            # Cơ sở, mã giảm giá, thông báo, tài khoản, món, nhóm tuỳ chọn,
+│   │   ├── staff.ts            # Nhận order, chuyển bếp, phục vụ, thu tiền (kèm mã giảm giá),
+│   │   │                       # đơn nháp, bàn, QR
+│   │   ├── kitchen.ts          # API phục vụ bếp: nhận đơn, tick món, trả lại
+│   │   ├── admin.ts            # Cơ sở, mã giảm giá, tài khoản, món, nhóm tuỳ chọn,
 │   │   │                       # bàn QR, lịch sử, báo cáo
 │   │   ├── stream.ts           # Endpoint SSE
 │   │   └── upload.ts           # Tải ảnh món ăn
 │   ├── services/
-│   │   ├── order.service.ts    # Giá, tuỳ chọn, chuyển trạng thái đơn, sự kiện, dọn đơn nháp
-│   │   ├── branch.ts           # Phạm vi cơ sở, kiểm tra mã giảm giá, toạ độ
-│   │   └── announcement.service.ts  # Thông báo nội bộ + trạng thái đã đọc
-│   ├── sanitize.ts             # Bộ lọc HTML cho nội dung thông báo
+│   │   ├── order.service.ts    # Giá, tuỳ chọn, chuyển trạng thái đơn (kèm vòng bếp), sự kiện, dọn đơn nháp
+│   │   └── branch.ts           # Phạm vi cơ sở, kiểm tra mã giảm giá, toạ độ
 │   └── types.ts                # Kiểu dữ liệu dùng chung
 ├── web/                        # Frontend React (Vite)
 │   └── src/
@@ -181,21 +194,20 @@ npm start                 # Express phục vụ cả API và web tại :3000
 │       │   ├── AppLayout.tsx   # Khung + sidebar (phân nhóm theo quyền)
 │       │   ├── BillModal.tsx   # Popup xem/in hóa đơn 80mm
 │       │   ├── Charts.tsx      # Biểu đồ SVG tự vẽ (cột, ngang, vùng, vòng)
-│       │   ├── RichText.tsx    # Ô soạn thảo + hiển thị nội dung định dạng
-│       │   ├── AnnouncementPopup.tsx  # Popup thông báo lúc mở ca
+│       │   ├── RealtimeClock.tsx  # Đồng hồ đếm thời gian realtime
 │       │   └── Modal.tsx       # Hộp thoại dùng chung
 │       └── pages/
 │           ├── customer/       # Landing, Join, Menu, OrderStatus
-│           ├── staff/          # StaffOrders, StaffPayments, StaffTables,
-│           │                   # StaffNotifications
+│           ├── staff/          # StaffOrders, StaffPayments, StaffTables
+│           ├── kitchen/        # KitchenOrders, KitchenPrintPage
 │           └── admin/          # Dashboard, Reports, History, Users, Dishes,
 │                               # OptionGroups, Tables, QrPrintPage,
-│                               # DiscountCodes, Announcements, Settings
+│                               # DiscountCodes, Settings
 ├── tools/
 │   ├── deploy.mjs              # Triển khai qua SSH (máy Windows → server Linux)
 │   ├── deploy.config.json      # Thông tin server — KHÔNG commit (đã gitignore)
-│   ├── e2e.mjs                 # Kiểm thử luồng nghiệp vụ gốc (91 mục)
-│   └── verify-features.mjs     # Kiểm thử tính năng bổ sung (62 mục)
+│   ├── e2e.mjs                 # Kiểm thử luồng nghiệp vụ gốc (119 mục)
+│   └── verify-features.mjs     # Kiểm thử tính năng bổ sung (47 mục)
 └── .env.example                # Mẫu cấu hình
 ```
 
@@ -263,23 +275,34 @@ Tất cả trả về `{ ok: true, data }` hoặc `{ ok: false, error }`.
 | `POST` | `/login` | Đăng nhập nhân viên/Admin |
 | `GET` | `/me` | Thông tin tài khoản đang đăng nhập |
 
-**Nhân viên** — `/api/staff` *(yêu cầu JWT, tự giới hạn theo cơ sở)*
+**Phục vụ bàn** — `/api/staff` *(yêu cầu JWT, tự giới hạn theo cơ sở)*
 
 | Method | Đường dẫn | Ý nghĩa |
 | --- | --- | --- |
 | `GET` | `/orders`, `/orders/pending`, `/orders/unpaid` | Đơn theo trạng thái |
 | `GET` | `/orders/:orderNo` | Chi tiết đơn |
 | `POST` | `/orders/:orderNo/confirm` | Xác nhận nhận order |
-| `POST` | `/orders/:orderNo/serve` | Đã phục vụ xong |
+| `POST` | `/orders/:orderNo/confirm` | Xác nhận nhận order |
+| `POST` | `/orders/:orderNo/send-kitchen` | Chuyển đơn qua bếp |
+| `POST` | `/orders/:orderNo/serve` | Đã phục vụ xong (kể cả nhận lại từ bếp) |
 | `POST` | `/orders/:orderNo/reject` | Huỷ đơn |
 | `POST` | `/orders/:orderNo/assign` | Gán nhân viên phục vụ |
 | `POST` | `/orders/:orderNo/pay` | Thu tiền (`cash` \| `transfer`, có thể kèm `discount_code`) |
 | `POST` | `/discount-codes/preview` | Xem trước số tiền giảm |
 | `GET` | `/orders/drafts` | Đơn chưa order (đơn nháp của khách) |
 | `DELETE` | `/orders/:orderNo/draft` | NV/Admin xoá một đơn nháp |
-| `GET` | `/announcements`, `/announcements/unread-count` | Thông báo nội bộ đã đăng + số chưa đọc |
-| `POST` | `/announcements/:id/read`, `/announcements/read-all` | Đánh dấu đã đọc / đọc tất cả |
 | `GET` | `/tables`, `/tables/:id/qr`, `/branches`, `/stats`, `/staff-list` | Bàn, QR, cơ sở, thống kê |
+
+**Phục vụ bếp** — `/api/kitchen` *(yêu cầu JWT vai trò kitchen)*
+
+| Method | Đường dẫn | Ý nghĩa |
+| --- | --- | --- |
+| `GET` | `/orders` | Đơn đã chuyển xuống bếp (chờ nhận + đang làm) |
+| `GET` | `/orders/:orderNo` | Chi tiết đơn cho bếp |
+| `POST` | `/orders/:orderNo/accept` | Bếp nhận đơn |
+| `PATCH` | `/orders/:orderNo/items/:itemId` | Tick / bỏ tick một món đã nấu xong |
+| `POST` | `/orders/:orderNo/finish` | Làm xong (bắt buộc tick đủ món) → trả về phục vụ bàn |
+| `GET` | `/stats`, `/branches` | Thống kê nhanh, cơ sở |
 
 **Admin** — `/api/admin` *(yêu cầu JWT vai trò admin)*
 
@@ -287,7 +310,6 @@ Tất cả trả về `{ ok: true, data }` hoặc `{ ok: false, error }`.
 | --- | --- | --- |
 | `GET POST PATCH DELETE` | `/branches`, `/branches/:id` | Cơ sở (kèm toạ độ lat/lng) |
 | `GET POST PATCH DELETE` | `/discount-codes`, `/discount-codes/:id` | Mã giảm giá (kèm `usage_limit`) |
-| `GET POST PATCH DELETE` | `/announcements`, `/announcements/:id` | Thông báo nội bộ |
 | `GET POST PATCH DELETE` | `/users`, `/users/:id` | Tài khoản |
 | `POST` | `/users/:id/reset-password` | Đặt lại mật khẩu |
 | `GET POST PATCH DELETE` | `/option-groups`, `/option-groups/:id` | Nhóm tuỳ chọn |
@@ -311,8 +333,8 @@ Tất cả trả về `{ ok: true, data }` hoặc `{ ok: false, error }`.
 Hai bộ test tự động mô phỏng đúng thao tác thật, chạy trên bản đã triển khai:
 
 ```bash
-node tools/e2e.mjs                  # hồi quy luồng order cũ — 91 mục
-node tools/verify-features.mjs      # tính năng bổ sung — 62 mục
+node tools/e2e.mjs                  # hồi quy luồng order cũ — 119 mục
+node tools/verify-features.mjs      # tính năng bổ sung — 47 mục
 node tools/e2e.mjs http://localhost:3000   # chạy bản local
 ```
 
@@ -325,19 +347,19 @@ node tools/e2e.mjs http://localhost:3000   # chạy bản local
 - Phân quyền: nhân viên không truy cập được `/api/admin/*` (403).
 - Thanh toán: **chuyển khoản bị chặn (403)**, tiền mặt thành công.
 - **Cơ sở**: NV cơ sở khác không thấy bàn/đơn của cơ sở mình, xử lý đơn cơ sở khác → 403; Admin lọc được theo cơ sở.
+- **Vòng bếp**: PV bàn gửi đơn xuống bếp → bếp nhận → tick từng món → chưa tick đủ thì không làm xong được → làm xong trả lại PV bàn phục vụ khách; API bếp bị chặn với vai trò khác.
 - **Mã giảm giá**: xem trước mã hợp lệ, từ chối mã sai/tắt/hết hạn, thu tiền kèm mã và lưu đúng vào đơn + lịch sử + báo cáo.
 - `/api/order/mine` đã bị gỡ (404) — khách không xem được lịch sử order.
 
 `verify-features.mjs` kiểm tra:
 
-- **Thông báo nội bộ**: tạo/sửa/gỡ đăng/xoá, **lọc HTML** (script/onerror bị chặn, thẻ h3/ul/li/b/i/u được giữ), đếm chưa đọc, đánh dấu đã đọc, NV không gọi được API admin (403).
 - **Đơn chưa order**: khách quét QR tạo phiên → đơn nháp xuất hiện ở tab của NV → xoá được → xoá lần 2 báo 404; khách tự *kết thúc phiên* thì phiên đóng (token 401).
 - **Giới hạn lượt mã giảm giá**: tạo mã `usage_limit`, dùng hết lượt thì xem trước lẫn thu tiền đều bị từ chối, thanh toán không mã vẫn được.
 - **Toạ độ cơ sở**: lưu lat/lng, từ chối ngoài khoảng −90..90 / −180..180 và giá trị không phải số.
 - **Báo cáo doanh thu**: có `daily`, `byHour` (24 khung giờ), `byBranch`, `topDishes`, `funnel`, `byStaff`, `byTable`, `byDiscount`; lọc theo cơ sở trả tổng nhỏ hơn tổng chung.
 - **Bản in thẻ QR**: `/admin/tables/qr-sheet` trả ảnh QR dạng data-URL + URL đúng `PUBLIC_URL`.
 
-> Lưu ý: `e2e.mjs` mỗi lần chạy tạo thêm đơn đã thanh toán trong lịch sử/báo cáo; `verify-features.mjs` có tạo rồi xoá đơn nháp, mã `LIMIT...` và thông báo tạm.
+> Lưu ý: `e2e.mjs` mỗi lần chạy tạo thêm đơn đã thanh toán trong lịch sử/báo cáo; `verify-features.mjs` có tạo rồi xoá đơn nháp và mã `LIMIT...`.
 
 ---
 

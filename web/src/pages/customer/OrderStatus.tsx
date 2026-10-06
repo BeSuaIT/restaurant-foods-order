@@ -12,22 +12,39 @@ import type { Order, OrderStatus } from '../../types';
  *  Các bước theo dõi
  * ================================================================== */
 
+/**
+ * Các bước khách thấy. Có những bước hành nội mà khách không cần biết
+ * (đã chuyển bếp, bếp đang nấu) nên gộp chung thành một mốc "đang nấu" —
+ * khách chỉ cần biết món đang được chuẩn bị, không cần theo dõi nội bộ bếp.
+ */
 const STEPS: { key: OrderStatus; label: string; icon: string }[] = [
   { key: 'pending', label: 'Đã gửi đơn', icon: '📨' },
   { key: 'confirmed', label: 'Nhà hàng đã nhận', icon: '👨‍🍳' },
+  { key: 'sent_kitchen', label: 'Đang nấu', icon: '🍳' },
   { key: 'served', label: 'Đang phục vụ', icon: '🍽️' },
   { key: 'paid', label: 'Hoàn tất', icon: '✅' },
 ];
 
+/** Trạng thái nội bộ của bếp quy về mốc "đang nấu" để khách không bị rối. */
+const STEP_OF: Partial<Record<OrderStatus, OrderStatus>> = {
+  sent_kitchen: 'sent_kitchen',
+  kitchen_accepted: 'sent_kitchen',
+  ready_to_serve: 'sent_kitchen',
+};
+
 function stepIndex(status: OrderStatus): number {
   if (status === 'cancelled') return -1;
-  const i = STEPS.findIndex((s) => s.key === status);
+  const key = STEP_OF[status] ?? status;
+  const i = STEPS.findIndex((s) => s.key === key);
   return i < 0 ? 0 : i;
 }
 
 const WAIT_HINTS: Record<string, string> = {
   pending: 'Đơn của bạn đã được gửi tới nhà hàng. Nhân viên sẽ xác nhận trong chốc lát.',
   confirmed: 'Nhà hàng đã nhận đơn và đang chuẩn bị món cho bạn.',
+  sent_kitchen: 'Món đang được nhà bếp chuẩn bị.',
+  kitchen_accepted: 'Món đang được nhà bếp chuẩn bị.',
+  ready_to_serve: 'Món đã xong, nhân viên đang mang ra bàn cho bạn.',
   served: 'Món đã được phục vụ. Vui lòng kiểm tra và thanh toán tại bàn nhé.',
 };
 
@@ -58,6 +75,8 @@ export function OrderStatusPage() {
     if (!order) return;
     if (prevStatus && prevStatus !== order.status) {
       if (order.status === 'confirmed') toast.success('Nhà hàng đã xác nhận đơn của bạn!');
+      else if (order.status === 'sent_kitchen') toast.info('Đơn đã chuyển xuống bếp, món đang được chuẩn bị.');
+      else if (order.status === 'ready_to_serve') toast.info('Món đã xong, nhân viên đang mang ra bàn cho bạn.');
       else if (order.status === 'served') toast.info('Món đã được phục vụ. Vui lòng kiểm tra đơn.');
       else if (order.status === 'cancelled') toast.error(`Đơn đã bị huỷ: ${order.rejected_reason ?? 'không rõ lý do'}`);
       else if (order.status === 'paid') toast.success('Cảm ơn bạn! Đơn đã được thanh toán.');

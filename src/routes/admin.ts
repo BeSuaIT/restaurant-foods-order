@@ -19,14 +19,8 @@ import {
   parseCoordinate,
   requireBranch,
 } from '../services/branch.js';
-import {
-  createAnnouncement,
-  deleteAnnouncement,
-  listAnnouncementsAdmin,
-  parseAnnouncementInput,
-  updateAnnouncement,
-} from '../services/announcement.service.js';
-import type { DiscountCode, OptionGroup, OptionItem, OrderStatus, RestTable } from '../types.js';
+import type { DiscountCode, OptionGroup, OptionItem, OrderStatus, RestTable, UserRole } from '../types.js';
+import { ACTIVE_ORDER_STATUSES } from '../types.js';
 
 export const adminRouter = Router();
 
@@ -39,7 +33,7 @@ adminRouter.use(requireStaff, requireAdmin);
  */
 interface BranchFilterReq {
   query: Record<string, unknown>;
-  staff?: { role: 'admin' | 'staff'; branch_id: number | null };
+  staff?: { role: UserRole; branch_id: number | null };
 }
 
 function branchWhere(req: BranchFilterReq, params: SqlParam[], column = 't.branch_id') {
@@ -262,58 +256,12 @@ adminRouter.delete(
 );
 
 /* ================================================================== *
- *  0c. THÔNG BÁO NỘI BỘ (Admin soạn -> nhân viên đọc)
- * ================================================================== */
-
-/** Danh sách thông báo (kể cả bản chưa đăng) + số người đã đọc. */
-adminRouter.get(
-  '/announcements',
-  asyncRoute(async (_req, res) => {
-    ok(res, await listAnnouncementsAdmin());
-  }),
-);
-
-adminRouter.post(
-  '/announcements',
-  asyncRoute(async (req, res) => {
-    const input = parseAnnouncementInput(req.body);
-    const created = await createAnnouncement(input, {
-      id: req.staff!.id,
-      full_name: req.staff!.full_name,
-    });
-    bus.publish({ type: 'announcement.updated' });
-    ok(res, created, 201);
-  }),
-);
-
-adminRouter.patch(
-  '/announcements/:id',
-  asyncRoute(async (req, res) => {
-    const id = toInt(req.params.id, 0);
-    const input = parseAnnouncementInput(req.body);
-    const updated = await updateAnnouncement(id, input);
-    bus.publish({ type: 'announcement.updated' });
-    ok(res, updated);
-  }),
-);
-
-adminRouter.delete(
-  '/announcements/:id',
-  asyncRoute(async (req, res) => {
-    const id = toInt(req.params.id, 0);
-    const res1 = await deleteAnnouncement(id);
-    bus.publish({ type: 'announcement.updated' });
-    ok(res, res1);
-  }),
-);
-
-/* ================================================================== *
  *  1. QUẢN LÝ TÀI KHOẢN
  * ================================================================== */
 
 const userListSchema = z.object({
   q: z.string().trim().max(100).optional(),
-  role: z.enum(['admin', 'staff']).optional(),
+  role: z.enum(['admin', 'staff', 'kitchen']).optional(),
   is_active: z.enum(['true', 'false']).optional(),
   branch_id: z.string().optional(),
 });
@@ -369,7 +317,7 @@ const createUserSchema = z.object({
     .regex(/^[a-zA-Z0-9._-]+$/, 'Tài khoản chỉ gồm chữ, số và các ký tự . _ -'),
   password: z.string().min(4, 'Mật khẩu tối thiểu 4 ký tự.').max(100),
   full_name: z.string().trim().min(2, 'Vui lòng nhập họ tên.').max(80),
-  role: z.enum(['admin', 'staff']).default('staff'),
+  role: z.enum(['admin', 'staff', 'kitchen']).default('staff'),
   phone: z.string().trim().max(20).optional().nullable(),
   note: z.string().trim().max(200).optional().nullable(),
   branch_id: z.number().int().positive().nullable().optional(),
@@ -384,11 +332,17 @@ adminRouter.post(
     const exists = await queryOne('SELECT 1 FROM users WHERE username = $1', [body.username.toLowerCase()]);
     if (exists) throw conflict('Tài khoản này đã tồn tại.');
 
-    // Admin mặc định xem tất cả cơ sở; nhân viên phải thuộc 1 cơ sở
+    // Admin mặc định xem tất cả cơ sở; phục vụ bàn & phục vụ bếp phải thuộc 1 cơ sở
     let branchId: number | null = null;
-    if (body.role === 'staff') {
+    if (body.role === 'staff' || body.role === 'kitchen') {
       branchId = await requireBranch(body.branch_id);
-      if (!branchId) throw badRequest('Vui lòng chọn cơ sở cho nhân viên.');
+      if (!branchId) {
+        throw badRequest(
+          body.role === 'kitchen'
+            ? 'Vui lòng chọn cơ sở cho phục vụ bếp.'
+            : 'Vui lòng chọn cơ sở cho phục vụ bàn.',
+        );
+      }
     }
 
     const hash = await hashPassword(body.password);
@@ -413,7 +367,7 @@ adminRouter.post(
 
 const updateUserSchema = z.object({
   full_name: z.string().trim().min(2).max(80).optional(),
-  role: z.enum(['admin', 'staff']).optional(),
+  role: z.enum(['admin', 'staff', 'kitchen']).optional(),
   phone: z.string().trim().max(20).optional().nullable(),
   note: z.string().trim().max(200).optional().nullable(),
   branch_id: z.number().int().positive().nullable().optional(),
@@ -434,7 +388,10 @@ adminRouter.patch(
     if (!user) throw notFound('Không tìm thấy tài khoản.');
 
     // Không cho phép tự khóa / tự hạ quyền tài khoản admin cuối cùng
-    if (user.role === 'admin' && (body.role === 'staff' || body.is_active === false)) {
+    if (
+      user.role === 'admin' &&
+      (body.role === 'staff' || body.role === 'kitchen' || body.is_active === false)
+    ) {
       const others = await queryOne<{ count: number }>(
         `SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin' AND is_active AND id <> $1`,
         [id],
@@ -872,7 +829,9 @@ adminRouter.get(
     const rows = await query<RestTable & { active_order_count: number; branch_name: string | null }>(
       `SELECT t.*, b.name AS branch_name,
               (SELECT COUNT(*)::int FROM orders o
-                WHERE o.table_id = t.id AND o.status IN ('pending','confirmed','served')) AS active_order_count
+                WHERE o.table_id = t.id
+                  AND o.status IN ('pending','confirmed','sent_kitchen','kitchen_accepted','ready_to_serve','served')
+              ) AS active_order_count
          FROM rest_tables t
          LEFT JOIN branches b ON b.id = t.branch_id
         WHERE 1 = 1${clause}
@@ -933,7 +892,9 @@ adminRouter.delete(
   asyncRoute(async (req, res) => {
     const id = toInt(req.params.id, 0);
     const active = await queryOne<{ count: number }>(
-      `SELECT COUNT(*)::int AS count FROM orders WHERE table_id = $1 AND status IN ('pending','confirmed','served')`,
+      `SELECT COUNT(*)::int AS count FROM orders
+        WHERE table_id = $1
+          AND status IN ('pending','confirmed','sent_kitchen','kitchen_accepted','ready_to_serve','served')`,
       [id],
     );
     if ((active?.count ?? 0) > 0) throw conflict('Bàn đang có đơn chưa thanh toán, không thể xoá.');
@@ -1233,7 +1194,7 @@ adminRouter.get(
       `SELECT
          COUNT(*) FILTER (WHERE o.status = 'paid')::int     AS paid,
          COUNT(*) FILTER (WHERE o.status = 'cancelled')::int AS cancelled,
-         COUNT(*) FILTER (WHERE o.status IN ('pending','confirmed','served'))::int AS open
+         COUNT(*) FILTER (WHERE o.status IN ('pending','confirmed','sent_kitchen','kitchen_accepted','ready_to_serve','served'))::int AS open
        FROM orders o
        LEFT JOIN rest_tables t ON t.id = o.table_id
        WHERE o.status <> 'draft'
@@ -1299,7 +1260,10 @@ function listHistoryLite(q: unknown) {
     .parse(q);
 
   const raw = parsed.status ? parsed.status.split(',').map((s) => s.trim()).filter(Boolean) : [];
-  const statuses = (raw.length ? raw : ['pending', 'confirmed', 'served', 'paid', 'cancelled']) as OrderStatus[];
+  // Mặc định: đơn đang chạy + đã thanh toán, bỏ nháp và đã huỷ.
+  const statuses = (
+    raw.length ? raw : [...ACTIVE_ORDER_STATUSES, 'paid', 'cancelled']
+  ) as OrderStatus[];
   const f = effectiveBranchFilter({ staff: { role: 'admin', branch_id: null } }, parsed.branch_id);
 
   return {

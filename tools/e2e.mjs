@@ -408,8 +408,124 @@ async function main() {
     (repCode.data?.byDiscount ?? []).some((d) => d.code === 'GIAM10'),
     (repCode.data?.byDiscount ?? []).map((d) => `${d.code}: ${d.orders} đơn`).join(' | '));
 
-  /* ---------------- 11. Đã bỏ lịch sử của khách ---------------- */
-  section('11. Khách KHÔNG còn xem lịch sử order');
+  /* ---------------- 11. Vòng bếp ---------------- */
+  section('11. Vòng bếp (PV bàn chuyển bếp → bếp nấu → trả lại)');
+  // Đơn riêng cho vòng bếp ở bàn A2 để không đụng đơn đã thanh toán ở trên.
+  const lookupA2 = await api('/tables/lookup?q=A2');
+  const joinA2 = await api('/session/join', {
+    method: 'POST',
+    body: { qrToken: lookupA2.data?.qr_token, name: 'Khách Vòng Bếp', phone: `09${String(Date.now() + 13).slice(-8)}` },
+  });
+  check('Khách vào bàn A2', joinA2.status === 201, joinA2.data?.table?.code);
+  const tTokenK = joinA2.data?.token;
+
+  await api('/order/current', { tableToken: tTokenK });
+  const addK1 = await api('/order/items', { method: 'POST', tableToken: tTokenK, body: { dishId: noOptions.id, quantity: 1 } });
+  const addK2 = await api('/order/items', { method: 'POST', tableToken: tTokenK, body: { dishId: (banhMi ?? noOptions).id, quantity: 1 } });
+  const submitK = await api('/order/submit', { method: 'POST', tableToken: tTokenK });
+  const orderNoK = submitK.data?.order_no;
+  check('Đơn 2 món cho vòng bếp', addK1.status === 201 && addK2.status === 201 && !!orderNoK, orderNoK);
+
+  const confirmK = await api(`/staff/orders/${orderNoK}/confirm`, { method: 'POST', token: tkOrder });
+  check('PV bàn nhận đơn -> confirmed', confirmK.status === 200 && confirmK.data?.status === 'confirmed', confirmK.data?.status);
+
+  const bepBefore = await api('/kitchen/orders');
+  check('Chưa đăng nhập thì không xem được bảng bếp', bepBefore.status === 401 || bepBefore.status === 403, `status ${bepBefore.status}`);
+
+  const staffBlockedKitchen = await api('/kitchen/orders', { token: tkOrder });
+  check('PV bàn KHÔNG được vào API bếp -> 403', staffBlockedKitchen.status === 403,
+    `${staffBlockedKitchen.status}: ${staffBlockedKitchen.json?.error?.message ?? ''}`);
+
+  const lb = await login('bep', '1234');
+  check('Đăng nhập bep/1234', lb.status === 200 && !!lb.data?.token, lb.data?.user?.full_name);
+  const tkBep = lb.data?.token;
+  check('Role của bep là kitchen', lb.data?.user?.role === 'kitchen', lb.data?.user?.role);
+
+  const sendK = await api(`/staff/orders/${orderNoK}/send-kitchen`, { method: 'POST', token: tkOrder });
+  check('PV bàn chuyển qua bếp -> sent_kitchen', sendK.status === 200 && sendK.data?.status === 'sent_kitchen', sendK.data?.status);
+  check('Ghi nhận người chuyển bếp', !!sendK.data?.sent_to_kitchen_at, sendK.data?.sent_to_kitchen_by_name);
+
+  const boardK = await api('/kitchen/orders', { token: tkBep });
+  const inIncoming = (boardK.data?.incoming ?? []).some((o) => o.order_no === orderNoK);
+  check('Bảng bếp có đơn ở mục chờ bếp nhận', boardK.status === 200 && inIncoming,
+    `${boardK.data?.incoming?.length} chờ nhận / ${boardK.data?.cooking?.length} đang làm`);
+
+  const earlyTick = await api(`/kitchen/orders/${orderNoK}/items/${addK1.data?.items?.[0]?.id}`, {
+    method: 'PATCH', token: tkBep, body: { done: true },
+  });
+  check('Chưa nhận đơn thì chưa tick được món', earlyTick.status === 409 || earlyTick.status === 400,
+    `${earlyTick.status}: ${earlyTick.json?.error?.message ?? ''}`);
+
+  const acceptK = await api(`/kitchen/orders/${orderNoK}/accept`, { method: 'POST', token: tkBep });
+  check('Bếp nhận đơn -> kitchen_accepted', acceptK.status === 200 && acceptK.data?.status === 'kitchen_accepted', acceptK.data?.status);
+  check('Nhật ký lưu tên PV bếp nhận', acceptK.data?.kitchen_received_by_name === lb.data?.user?.full_name,
+    `kitchen_received_by_name="${acceptK.data?.kitchen_received_by_name}"`);
+
+  const earlyFinish = await api(`/kitchen/orders/${orderNoK}/finish`, { method: 'POST', token: tkBep });
+  check('Chưa tick đủ món thì không cho trả lại', earlyFinish.status === 409,
+    `${earlyFinish.status}: ${earlyFinish.json?.error?.message ?? ''}`);
+
+  const itemsK = acceptK.data?.items ?? [];
+  const firstId = itemsK[0]?.id;
+  const secondId = itemsK[1]?.id;
+  const tick1 = await api(`/kitchen/orders/${orderNoK}/items/${firstId}`, { method: 'PATCH', token: tkBep, body: { done: true } });
+  check('Tick món thứ nhất', tick1.status === 200 && !!tick1.data?.items?.find((i) => i.id === firstId)?.kitchen_done_at,
+    `${(tick1.data?.items ?? []).filter((i) => i.kitchen_done_at).length}/${itemsK.length} món`);
+  check('Ghi tên người tick món', tick1.data?.items?.find((i) => i.id === firstId)?.kitchen_done_by_name === lb.data?.user?.full_name,
+    tick1.data?.items?.find((i) => i.id === firstId)?.kitchen_done_by_name);
+
+  const untick = await api(`/kitchen/orders/${orderNoK}/items/${firstId}`, { method: 'PATCH', token: tkBep, body: { done: false } });
+  check('Bấm lại để bỏ tick', untick.status === 200 && !untick.data?.items?.find((i) => i.id === firstId)?.kitchen_done_at);
+
+  const staffTickKitchen = await api(`/kitchen/orders/${orderNoK}/items/${firstId}`, {
+    method: 'PATCH', token: tkOrder, body: { done: true },
+  });
+  check('PV bàn KHÔNG tick được món của bếp -> 403', staffTickKitchen.status === 403,
+    `${staffTickKitchen.status}: ${staffTickKitchen.json?.error?.message ?? ''}`);
+
+  for (const id of [firstId, secondId].filter(Boolean)) {
+    await api(`/kitchen/orders/${orderNoK}/items/${id}`, { method: 'PATCH', token: tkBep, body: { done: true } });
+  }
+  const boardAfterTick = await api(`/kitchen/orders/${orderNoK}`, { token: tkBep });
+  const doneAll = (boardAfterTick.data?.items ?? []).every((i) => i.kitchen_done_at);
+  check('Tick đủ món thì thấy xong hết', doneAll,
+    `${(boardAfterTick.data?.items ?? []).filter((i) => i.kitchen_done_at).length}/${(boardAfterTick.data?.items ?? []).length}`);
+
+  const finishK = await api(`/kitchen/orders/${orderNoK}/finish`, { method: 'POST', token: tkBep });
+  check('Bếp trả lại PV bàn -> ready_to_serve', finishK.status === 200 && finishK.data?.status === 'ready_to_serve', finishK.data?.status);
+  check('Ghi nhận người nấu xong', finishK.data?.kitchen_done_by_name === lb.data?.user?.full_name,
+    `kitchen_done_by_name="${finishK.data?.kitchen_done_by_name}"`);
+
+  const boardEmpty = await api('/kitchen/orders', { token: tkBep });
+  check('Đơn đã trả thì biến khỏi bảng bếp',
+    !(boardEmpty.data?.incoming ?? []).some((o) => o.order_no === orderNoK) &&
+    !(boardEmpty.data?.cooking ?? []).some((o) => o.order_no === orderNoK));
+
+  const kitchenUnpaid = await api('/staff/orders/unpaid', { token: tkOrder });
+  check('Đơn đang ở bếp vẫn nằm trong hoá đơn chưa thu',
+    (kitchenUnpaid.data ?? []).some((o) => o.order_no === orderNoK), `${kitchenUnpaid.data?.length} hoá đơn chờ`);
+
+  const serveK = await api(`/staff/orders/${orderNoK}/serve`, { method: 'POST', token: tkOrder, body: { served: true } });
+  check('PV bàn nhận món từ bếp -> served', serveK.status === 200 && serveK.data?.status === 'served', serveK.data?.status);
+
+  const kitchenBlockedStaff = await api('/staff/orders', { token: tkBep });
+  check('PV bếp KHÔNG dùng được API phục vụ bàn -> 403', kitchenBlockedStaff.status === 403,
+    `${kitchenBlockedStaff.status}: ${kitchenBlockedStaff.json?.error?.message ?? ''}`);
+
+  const kitchenNoPay = await api(`/staff/orders/${orderNoK}/pay`, { method: 'POST', token: tkBep, body: { method: 'cash' } });
+  check('PV bếp KHÔNG thu được tiền -> 403', kitchenNoPay.status === 403,
+    `${kitchenNoPay.status}: ${kitchenNoPay.json?.error?.message ?? ''}`);
+
+  const payK = await api(`/staff/orders/${orderNoK}/pay`, { method: 'POST', token: tkOrder, body: { method: 'cash' } });
+  check('PV bàn thu tiền cho đơn qua bếp -> paid', payK.status === 200 && payK.data?.status === 'paid', payK.data?.status);
+
+  const histK = await api('/admin/order-history?limit=20', { token: tkAdmin });
+  const recK = histK.data?.rows?.find((o) => o.order_no === orderNoK);
+  check('Lịch sử Admin lưu cả người bếp', !!recK?.received_by_name && !!recK?.kitchen_received_by_name,
+    `PV: ${recK?.received_by_name} / Bếp: ${recK?.kitchen_received_by_name}`);
+
+  /* ---------------- 12. Đã bỏ lịch sử của khách ---------------- */
+  section('12. Khách KHÔNG còn xem lịch sử order');
   const mine = await api('/order/mine', { tableToken: tToken });
   check('GET /api/order/mine đã bị gỡ -> 404', mine.status === 404, `status ${mine.status}`);
 

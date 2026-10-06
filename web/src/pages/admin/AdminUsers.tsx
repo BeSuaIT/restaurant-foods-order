@@ -6,7 +6,7 @@ import { useAsync } from '../../hooks/useAsync';
 import { ADMIN_SECTIONS, AppLayout } from '../../components/AppLayout';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
-import type { AdminUser, Branch, UserRole } from '../../types';
+import { ROLE_LABEL, type AdminUser, type Branch, type UserRole } from '../../types';
 
 interface FormState {
   id?: number;
@@ -61,8 +61,8 @@ export function AdminUsers() {
         role: form.role,
         phone: form.phone || null,
         note: form.note || null,
-        // Nhân viên phải có cơ sở; Admin để trống = xem tất cả cơ sở
-        branch_id: form.role === 'staff' ? form.branch_id : null,
+        // Phục vụ bàn & phục vụ bếp phải có cơ sở; Admin để trống = xem tất cả cơ sở
+        branch_id: form.role === 'admin' ? null : form.branch_id,
         is_active: form.is_active,
         ...(form.id ? {} : { username: form.username, password: form.password }),
         ...(form.id && form.password ? { password: form.password } : {}),
@@ -152,6 +152,8 @@ export function AdminUsers() {
           + Thêm tài khoản
         </button>
       }
+      onRefresh={state.reload}
+      refreshing={state.loading}
     >
       <div className="alert alert-info">
         ℹ️ Tài khoản <strong>không có chức năng đăng ký</strong> — mọi tài khoản đều do Admin cấp.
@@ -167,7 +169,8 @@ export function AdminUsers() {
           <label htmlFor="rf">Vai trò</label>
           <select id="rf" className="select" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as '' | UserRole)}>
             <option value="">Tất cả</option>
-            <option value="staff">Nhân viên</option>
+            <option value="staff">Phục vụ bàn</option>
+            <option value="kitchen">Phục vụ bếp</option>
             <option value="admin">Admin</option>
           </select>
         </div>
@@ -209,8 +212,12 @@ export function AdminUsers() {
                     {u.note ? <div className="tiny muted">{u.note}</div> : null}
                   </td>
                   <td>
-                    <span className={`badge ${u.role === 'admin' ? 'badge-danger' : 'badge-info'}`}>
-                      {u.role === 'admin' ? 'Admin' : 'Nhân viên'}
+                    <span
+                      className={`badge ${
+                        u.role === 'admin' ? 'badge-danger' : u.role === 'kitchen' ? 'badge-warn' : 'badge-info'
+                      }`}
+                    >
+                      {ROLE_LABEL[u.role]}
                     </span>
                   </td>
                   <td className="small nowrap">
@@ -288,7 +295,8 @@ export function AdminUsers() {
               <div className="field grow">
                 <label htmlFor="fr">Vai trò *</label>
                 <select id="fr" className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}>
-                  <option value="staff">Nhân viên (nhận order + thu tiền)</option>
+                  <option value="staff">Phục vụ bàn (nhận order, chuyển bếp, thu tiền)</option>
+                  <option value="kitchen">Phục vụ bếp (nhận đơn bếp, tick món, in phiếu bếp)</option>
                   <option value="admin">Admin (toàn quyền, xem mọi cơ sở, cũng nhận order được)</option>
                 </select>
               </div>
@@ -301,7 +309,7 @@ export function AdminUsers() {
 
             <div className="field">
               <label htmlFor="fb">
-                Cơ sở làm việc {form.role === 'staff' ? '*' : ''}
+                Cơ sở làm việc {form.role === 'admin' ? '' : '*'}
               </label>
               {form.role === 'admin' ? (
                 <>

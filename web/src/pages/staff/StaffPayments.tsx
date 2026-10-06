@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { AsyncBlock } from '../../components/PageParts';
 import { api, tokenStore } from '../../lib/http';
-import { durationBetween, formatMoney, formatTime } from '../../lib/format';
+import { formatMoney, formatTime } from '../../lib/format';
 import { useAsync } from '../../hooks/useAsync';
 import { useLiveStream } from '../../hooks/useLiveStream';
 import { useStaffAuth } from '../../hooks/useStaffAuth';
 import { ADMIN_SECTIONS, AppLayout, STAFF_SECTIONS } from '../../components/AppLayout';
 import { BillModal } from '../../components/BillModal';
-import { OrderItems, OrderTimeline } from '../../components/OrderBits';
+import { OrderItems, OrderTimeline, StatusBadge } from '../../components/OrderBits';
+import { RealtimeClock } from '../../components/RealtimeClock';
 import { Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
 import type { Branch, Order } from '../../types';
@@ -134,6 +135,8 @@ export function StaffPayments() {
       role="staff"
       sections={isAdmin ? ADMIN_SECTIONS : STAFF_SECTIONS}
       title="Hóa đơn chưa thanh toán"
+      onRefresh={state.reload}
+      refreshing={state.loading}
       subtitle={`${rows.length} hóa đơn · Tổng ${formatMoney(totalMoney)}`}
       actions={
         isAdmin ? (
@@ -204,13 +207,11 @@ export function StaffPayments() {
                       <span className="badge">🏢 {o.table_branch_name}</span>
                     ) : null}
                     <span className="mono small strong">{o.order_no}</span>
-                    <span className={`badge ${o.status === 'served' ? 'badge-ok' : 'badge-info'}`}>
-                      {o.status === 'served' ? 'Đã phục vụ' : 'Đang chuẩn bị'}
-                    </span>
+                    <StatusBadge status={o.status} />
                   </div>
                   <div className="tiny muted o-card-sub">
-                    👤 {o.customer_name} · ☎ {o.customer_phone} · 🕐 {formatTime(o.started_at)} · ⏱{' '}
-                    {durationBetween(o.started_at, null)}
+                    👤 {o.customer_name} · ☎ {o.customer_phone} · 🕐 {formatTime(o.started_at)} ·{' '}
+                    <RealtimeClock from={o.started_at} label="" />
                   </div>
                 </div>
                 <div className="o-card-sum">
@@ -225,7 +226,12 @@ export function StaffPayments() {
                 <OrderItems order={o} compact />
                 {o.received_by_name ? (
                   <div className="tiny muted mt-10">
-                    👨‍🍳 NV nhận order: <strong>{o.received_by_name}</strong>
+                    🧑‍🍳 PV nhận order: <strong>{o.received_by_name}</strong>
+                  </div>
+                ) : null}
+                {o.kitchen_received_by_name ? (
+                  <div className="tiny muted mt-6">
+                    🍳 Bếp nhận: <strong>{o.kitchen_received_by_name}</strong>
                   </div>
                 ) : null}
               </div>

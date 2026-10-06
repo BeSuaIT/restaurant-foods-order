@@ -194,6 +194,11 @@ export function AdminDishes() {
           </button>
         </>
       }
+      onRefresh={() => {
+        dishes.reload();
+        groups.reload();
+      }}
+      refreshing={dishes.loading}
     >
       <div className="alert alert-info">
         💡 Gán <strong>phần chọn đi kèm</strong> cho món để khi khách chọn món (VD: <em>bánh mì</em>) hệ thống hỏi thêm

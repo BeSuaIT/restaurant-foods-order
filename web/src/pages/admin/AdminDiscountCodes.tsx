@@ -169,6 +169,8 @@ export function AdminDiscountCodes() {
           + Thêm mã giảm giá
         </button>
       }
+      onRefresh={state.reload}
+      refreshing={state.loading}
     >
       <div className="alert alert-info">
         🎟️ Khi khách thanh toán, nhân viên nhập mã ở màn <strong>Hóa đơn chưa thanh toán</strong> để áp dụng giảm giá

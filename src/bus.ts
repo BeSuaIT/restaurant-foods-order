@@ -14,7 +14,6 @@ export type BusEvent =
   | { type: 'order.cancelled'; orderNo: string; tableId: number | null; status: string }
   | { type: 'menu.updated' }
   | { type: 'table.updated' }
-  | { type: 'announcement.updated' }
   | { type: 'heartbeat'; at: string };
 
 class OrderBus extends EventEmitter {

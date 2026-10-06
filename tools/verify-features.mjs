@@ -2,8 +2,8 @@
  *  KIỂM TRA TÍNH NĂNG (chạy sau khi triển khai)
  *
  *  `node tools/e2e.mjs`           - hồi quy luồng order cũ (91 mục)
- *  `node tools/verify-features.mjs` - các tính năng bổ sung (62 mục):
- *      đơn chưa order, mã giảm giá giới hạn lượt, thông báo nội bộ,
+ *  `node tools/verify-features.mjs` - các tính năng bổ sung (47 mục):
+ *      đơn chưa order, mã giảm giá giới hạn lượt,
  *      toạ độ cơ sở, biểu đồ báo cáo doanh thu, bản in thẻ QR.
  *
  *  Biến môi trường:
@@ -12,7 +12,7 @@
  *  Tài khoản dùng để kiểm tra: admin / order / check / quan, mật khẩu 1234.
  *
  *  LƯU Ý: script có tạo và xoá dữ liệu thật (đơn nháp, mã giảm giá dạng
- *  LIMIT..., thông báo tạm). Chỉ chạy trên môi trường thử nghiệm.
+ *  LIMIT...). Chỉ chạy trên môi trường thử nghiệm.
  * ================================================================== */
 
 const BASE = process.env.BASE ?? 'http://100.100.1.5';
@@ -75,75 +75,7 @@ const wrong = await api('/auth/login', { method: 'POST', body: { username: 'admi
 check('mật khẩu cũ 1224 bị từ chối', wrong.status === 401, `${wrong.status}`);
 
 /* ------------------------------------------------------------------ */
-section('1. Thông báo nội bộ');
-{
-  const r = await api('/admin/announcements', { token: tkAdmin });
-  const list0 = Array.isArray(r.data) ? r.data : [];
-  check('GET /admin/announcements (danh sách)', r.ok, `${list0.length} thông báo`);
-
-  // tạo thông báo có HTML + script để kiểm tra lọc
-  const made = await api('/admin/announcements', {
-    method: 'POST',
-    token: tkAdmin,
-    body: {
-      title: 'Kiểm tra thông báo tự động',
-      content:
-        '<h3>Tiêu đề phụ</h3><p>Xin chào <b>anh chị</b>, <i>lịch</i> <u>20/11</u>.</p>' +
-        '<ul><li>Mục 1</li><li>Mục 2</li></ul><script>alert(1)</script><img src=x onerror=alert(2)>',
-      is_published: true,
-    },
-  });
-  check('POST /admin/announcements', made.ok, made.message ?? '');
-  const id = made.data?.id;
-  check('script bị lọc khỏi nội dung', !String(made.data?.content ?? '').includes('<script'));
-  check('onerror bị lọc', !String(made.data?.content ?? '').includes('onerror'));
-  check('thẻ h3/ul/li/b/i/u được giữ', /<h3>/.test(made.data?.content ?? '') && /<ul>/.test(made.data?.content ?? ''));
-
-  const short = await api('/admin/announcements', {
-    method: 'POST',
-    token: tkAdmin,
-    body: { title: 'ab', content: '<p>x</p>', is_published: true },
-  });
-  check('tiêu đề quá ngắn bị từ chối', short.status === 409 || short.status === 400, `${short.status}`);
-
-  // Nhân viên thấy + chưa đọc
-  const seen = await api('/staff/announcements', { token: tkCheck });
-  check('GET /staff/announcements (NV thấy thông báo đã đăng)', seen.ok, `${seen.data?.rows?.length} cái`);
-  const uc = await api('/staff/announcements/unread-count', { token: tkCheck });
-  check('GET /staff/announcements/unread-count', uc.ok, `${uc.data?.unread_count} chưa đọc`);
-  const n0 = Number(uc.data?.unread_count ?? 0);
-  check('có ít nhất 1 thông báo chưa đọc', n0 > 0, `${n0}`);
-
-  const read1 = await api(`/staff/announcements/${id}/read`, { method: 'POST', token: tkCheck });
-  check('POST đánh dấu đã đọc', read1.ok, `còn ${read1.data?.unread_count} chưa đọc`);
-
-  const all = await api('/staff/announcements/read-all', { method: 'POST', token: tkCheck });
-  check('POST đánh dấu đọc tất cả', all.ok, `còn ${all.data?.unread_count}`);
-
-  // sửa + gỡ đăng
-  const upd = await api(`/admin/announcements/${id}`, {
-    method: 'PATCH',
-    token: tkAdmin,
-    body: { title: 'Kiểm tra thông báo (đã sửa)', content: '<p>Nội dung mới</p>', is_published: false },
-  });
-  check('PATCH /admin/announcements/:id', upd.ok && upd.data?.is_published === false);
-
-  const hidden = await api('/staff/announcements', { token: tkCheck });
-  check(
-    'thông báo gỡ đăng không còn hiện với NV',
-    !(hidden.data?.rows ?? []).some((a) => a.id === id),
-  );
-
-  // NV không được gọi API quản trị thông báo
-  const forbidden = await api('/admin/announcements', { token: tkCheck });
-  check('NV không được xem API quản trị thông báo -> 403', forbidden.status === 403, `${forbidden.status}`);
-
-  const del = await api(`/admin/announcements/${id}`, { method: 'DELETE', token: tkAdmin });
-  check('DELETE /admin/announcements/:id', del.ok, del.data?.message ?? '');
-}
-
-/* ------------------------------------------------------------------ */
-section('2. Đơn chưa order (draft)');
+section('1. Đơn chưa order (draft)');
 {
   const qrToken = (await api('/tables/lookup?q=A1')).data?.qr_token;
   check('tra cứu được mã QR bàn A1', !!qrToken);
@@ -184,7 +116,7 @@ section('2. Đơn chưa order (draft)');
 }
 
 /* ------------------------------------------------------------------ */
-section('3. Mã giảm giá giới hạn số lần sử dụng');
+section('2. Mã giảm giá giới hạn số lần sử dụng');
 {
   const code = `LIMIT${Date.now().toString().slice(-6)}`;
   const created = await api('/admin/discount-codes', {
@@ -255,7 +187,7 @@ section('3. Mã giảm giá giới hạn số lần sử dụng');
 }
 
 /* ------------------------------------------------------------------ */
-section('4. Toạ độ cơ sở');
+section('3. Toạ độ cơ sở');
 {
   const list = (await api('/admin/branches', { token: tkAdmin })).data ?? [];
   const b = list[0];
@@ -285,7 +217,7 @@ section('4. Toạ độ cơ sở');
 }
 
 /* ------------------------------------------------------------------ */
-section('5. Báo cáo doanh thu có biểu đồ');
+section('4. Báo cáo doanh thu có biểu đồ');
 {
   const now = new Date();
   const from = new Date(now.getTime() - 30 * 86400000).toISOString();
@@ -308,7 +240,7 @@ section('5. Báo cáo doanh thu có biểu đồ');
 }
 
 /* ------------------------------------------------------------------ */
-section('6. Bản in mã QR');
+section('5. Bản in mã QR');
 {
   const sheet = await api('/admin/tables/qr-sheet', { token: tkAdmin });
   check('GET /admin/tables/qr-sheet', sheet.ok && Array.isArray(sheet.data) && sheet.data.length > 0, `${sheet.data?.length} thẻ`);

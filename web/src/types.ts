@@ -2,8 +2,39 @@
  *  Kiểu dữ liệu dùng chung với backend
  * ================================================================== */
 
-export type UserRole = 'admin' | 'staff';
-export type OrderStatus = 'draft' | 'pending' | 'confirmed' | 'served' | 'paid' | 'cancelled';
+/** admin = quản trị · staff = phục vụ bàn · kitchen = phục vụ bếp */
+export type UserRole = 'admin' | 'staff' | 'kitchen';
+
+export const ROLE_LABEL: Record<UserRole, string> = {
+  admin: 'Quản trị',
+  staff: 'Phục vụ bàn',
+  kitchen: 'Phục vụ bếp',
+};
+
+export type OrderStatus =
+  | 'draft'
+  | 'pending'
+  | 'confirmed'
+  | 'sent_kitchen'
+  | 'kitchen_accepted'
+  | 'ready_to_serve'
+  | 'served'
+  | 'paid'
+  | 'cancelled';
+
+/** Bếp thấy 2 trạng thái này (chờ nhận + đang làm). */
+export const KITCHEN_STATUSES: OrderStatus[] = ['sent_kitchen', 'kitchen_accepted'];
+/** Đơn chờ phục vụ bàn nhận lại từ bếp. */
+export const READY_FOR_WAITER_STATUSES: OrderStatus[] = ['ready_to_serve'];
+/** Đơn còn đang chạy — bàn đang phục vụ, chưa thanh toán. */
+export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  'pending',
+  'confirmed',
+  'sent_kitchen',
+  'kitchen_accepted',
+  'ready_to_serve',
+  'served',
+];
 export type PaymentMethod = 'cash' | 'transfer';
 
 export interface Branch {
@@ -34,29 +65,6 @@ export interface DiscountCode {
   is_active: boolean;
   used_count: number;
   created_at?: string;
-}
-
-/** Thông báo nội bộ do Admin soạn gửi nhân viên */
-export interface Announcement {
-  id: number;
-  title: string;
-  /** HTML đã được lọc an toàn ở server */
-  content: string;
-  image_url: string | null;
-  is_published: boolean;
-  published_at: string;
-  created_by: number | null;
-  created_by_name: string | null;
-  created_at?: string;
-  updated_at?: string;
-  /** Chỉ có trong API quản trị */
-  read_count?: number;
-}
-
-/** Thông báo + trạng thái đã đọc của người đang đăng nhập */
-export interface AnnouncementWithRead extends Announcement {
-  is_read: boolean;
-  read_at: string | null;
 }
 
 export interface StaffUser {
@@ -124,6 +132,9 @@ export interface OrderItem {
   options_total: number;
   line_total: number;
   sort_order: number;
+  /** null = bếp chưa tick món này */
+  kitchen_done_at: string | null;
+  kitchen_done_by_name: string | null;
   options: OrderItemOption[];
 }
 
@@ -166,6 +177,15 @@ export interface Order {
   received_by_name: string | null;
   confirmed_at: string | null;
   rejected_reason: string | null;
+  /** Phục vụ bàn chuyển đơn qua bếp */
+  sent_to_kitchen_at: string | null;
+  sent_to_kitchen_by_name: string | null;
+  /** Bếp nhận đơn */
+  kitchen_received_at: string | null;
+  kitchen_received_by_name: string | null;
+  /** Bếp làm xong, trả lại phục vụ bàn */
+  kitchen_done_at: string | null;
+  kitchen_done_by_name: string | null;
   served_at: string | null;
   served_by: number | null;
   paid_at: string | null;
@@ -232,8 +252,11 @@ export interface DashboardStats {
 /* Nhãn tiếng Việt cho trạng thái */
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   draft: 'Đang chọn món',
-  pending: 'Chờ xác nhận',
-  confirmed: 'Đã xác nhận',
+  pending: 'Chờ nhận order',
+  confirmed: 'Đã nhận order',
+  sent_kitchen: 'Chờ bếp nhận',
+  kitchen_accepted: 'Bếp đang làm',
+  ready_to_serve: 'Bếp đã xong',
   served: 'Đã phục vụ',
   paid: 'Đã thanh toán',
   cancelled: 'Đã huỷ',
@@ -243,6 +266,9 @@ export const STATUS_TONE: Record<OrderStatus, string> = {
   draft: '',
   pending: 'badge-warn',
   confirmed: 'badge-info',
+  sent_kitchen: 'badge-warn',
+  kitchen_accepted: 'badge-info',
+  ready_to_serve: 'badge-brand',
   served: 'badge-brand',
   paid: 'badge-ok',
   cancelled: 'badge-danger',
@@ -262,7 +288,12 @@ export const EVENT_LABEL: Record<string, string> = {
   items_cleared: 'Xoá toàn bộ giỏ',
   note_updated: 'Cập nhật ghi chú',
   submitted: 'Khách gửi đơn',
-  confirmed: 'Nhân viên nhận order',
+  confirmed: 'Phục vụ bàn nhận order',
+  sent_kitchen: 'Chuyển qua bếp',
+  kitchen_accepted: 'Bếp nhận đơn',
+  kitchen_item_done: 'Bếp tick món xong',
+  kitchen_item_undone: 'Bếp bỏ tick món',
+  kitchen_finished: 'Bếp làm xong, trả phục vụ bàn',
   served: 'Đã phục vụ món',
   unserved: 'Mở lại đơn',
   cancelled: 'Huỷ đơn',

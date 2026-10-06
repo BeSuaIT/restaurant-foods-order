@@ -1,8 +1,9 @@
-﻿import type { PoolClient } from 'pg';
+import type { PoolClient } from 'pg';
 import { pool, query, queryOne, withTransaction, type SqlParam } from '../db.js';
 import { bus, notifyOrderChanged } from '../bus.js';
 import { badRequest, conflict, generateOrderNo, money, notFound } from '../utils.js';
 import { checkDiscountCode, normalizeDiscountCode } from './branch.js';
+import { ACTIVE_ORDER_STATUSES } from '../types.js';
 import type {
   ActorType,
   DishOptionGroupRef,
@@ -457,7 +458,8 @@ export async function purgeStaleDrafts(hours: number = DRAFT_TTL_HOURS): Promise
 /** Khách bấm "Gửi đơn" -> chờ nhân viên xác nhận */
 export async function submitOrder(order: Order, actor: { type: ActorType; name: string }): Promise<Order> {
   if (order.status !== 'draft') {
-    if (order.status === 'pending' || order.status === 'confirmed' || order.status === 'served') return order;
+    // Bấm "Gửi đơn" lần hai ở đơn đã vào quy trình: trả về luôn, không báo lỗi.
+    if (ACTIVE_ORDER_STATUSES.includes(order.status)) return order;
     throw conflict('Đơn này không ở trạng thái chờ gửi.');
   }
   if (order.items.length === 0) throw badRequest('Đơn chưa có món nào.');
@@ -543,18 +545,182 @@ export async function rejectOrder(order: Order, staff: { id: number; full_name: 
   return updated;
 }
 
-/** Đánh dấu đã phục vụ xong món */
-export async function markServed(order: Order, staff: { id: number; full_name: string }): Promise<Order> {
-  if (order.status !== 'confirmed') throw conflict('Chỉ đơn đã xác nhận mới chuyển sang đã phục vụ.');
+/* ================================================================== *
+ *  VÒNG BẾP
+ *
+ *  ③ phục vụ bàn chuyển đơn qua bếp
+ *  ④ bếp nhận đơn và tick từng món đã xong
+ *  ⑥ bếp làm xong hết thì trả lại phục vụ bàn
+ *
+ *  Đơn không bắt buộc qua bếp: confirmed → served vẫn chạy như cũ, để
+ *  quán chạy món nhanh (mì, phở bêng) không bị chặn bước trung gian.
+ * ================================================================== */
+
+/** ③ Phục vụ bàn chuyển đơn qua cho bếp. */
+export async function sendToKitchen(order: Order, staff: { id: number; full_name: string }): Promise<Order> {
+  if (order.status !== 'confirmed') throw conflict('Chỉ đơn đã nhận mới chuyển qua bếp được.');
 
   await withTransaction(async (client) => {
-    await client.query(`UPDATE orders SET status = 'served', served_at = NOW(), served_by = $2 WHERE id = $1`, [
-      order.id,
-      staff.id,
-    ]);
+    const { rows } = await client.query<{ status: OrderStatus }>(
+      `UPDATE orders
+          SET status = 'sent_kitchen',
+              sent_to_kitchen_at = NOW(),
+              sent_to_kitchen_by = $2,
+              sent_to_kitchen_by_name = $3
+        WHERE id = $1 AND status = 'confirmed'
+        RETURNING status`,
+      [order.id, staff.id, staff.full_name],
+    );
+    if (rows.length === 0) throw conflict('Đơn vừa được cập nhật bởi nhân viên khác.');
+
+    await addEvent(client, order.id, {
+      event_type: 'sent_kitchen',
+      from_status: 'confirmed',
+      to_status: 'sent_kitchen',
+      actor_type: 'staff',
+      actor_id: staff.id,
+      actor_name: staff.full_name,
+    });
+  });
+
+  const updated = (await getOrderById(order.id))!;
+  notifyOrderChanged(updated.order_no, updated.table_id, updated.status);
+  return updated;
+}
+
+/** ④ Bếp nhận đơn. Ghi tên bếp vào nhật y như phục vụ bàn. */
+export async function kitchenAcceptOrder(order: Order, staff: { id: number; full_name: string }): Promise<Order> {
+  if (order.status !== 'sent_kitchen') throw conflict('Chỉ đơn bếp vừa nhận được mới xác nhận nhận.');
+
+  await withTransaction(async (client) => {
+    const { rows } = await client.query<{ status: OrderStatus }>(
+      `UPDATE orders
+          SET status = 'kitchen_accepted',
+              kitchen_received_at = NOW(),
+              kitchen_received_by = $2,
+              kitchen_received_by_name = $3
+        WHERE id = $1 AND status = 'sent_kitchen'
+        RETURNING status`,
+      [order.id, staff.id, staff.full_name],
+    );
+    if (rows.length === 0) throw conflict('Đơn vừa được cập nhật bởi nhân viên khác.');
+
+    await addEvent(client, order.id, {
+      event_type: 'kitchen_accepted',
+      from_status: 'sent_kitchen',
+      to_status: 'kitchen_accepted',
+      actor_type: 'kitchen',
+      actor_id: staff.id,
+      actor_name: staff.full_name,
+    });
+  });
+
+  const updated = (await getOrderById(order.id))!;
+  notifyOrderChanged(updated.order_no, updated.table_id, updated.status);
+  return updated;
+}
+
+/**
+ * ④ Bếp tick từng món đã xong. Bỏ tick (bấm lại) để sửa khi nhầm.
+ * Chỉ tick được khi đơn đang ở kitchen_accepted.
+ */
+export async function setKitchenItemDone(
+  order: Order,
+  itemId: number,
+  done: boolean,
+  staff: { id: number; full_name: string },
+): Promise<Order> {
+  if (order.status !== 'kitchen_accepted') throw conflict('Chỉ tick món khi bếp đã nhận đơn.');
+
+  await withTransaction(async (client) => {
+    const { rowCount } = await client.query(
+      `UPDATE order_items
+          SET kitchen_done_at    = CASE WHEN $3 THEN NOW() ELSE NULL END,
+              kitchen_done_by    = CASE WHEN $3 THEN $4::int ELSE NULL END,
+              kitchen_done_by_name = CASE WHEN $3 THEN $5 ELSE NULL END
+        WHERE id = $1 AND order_id = $2`,
+      [itemId, order.id, done, staff.id, staff.full_name],
+    );
+    if (rowCount === 0) throw notFound('Không tìm thấy món này trong đơn.');
+
+    await addEvent(client, order.id, {
+      event_type: done ? 'kitchen_item_done' : 'kitchen_item_undone',
+      actor_type: 'kitchen',
+      actor_id: staff.id,
+      actor_name: staff.full_name,
+      detail: { item_id: itemId },
+    });
+  });
+
+  const updated = (await getOrderById(order.id))!;
+  notifyOrderChanged(updated.order_no, updated.table_id, updated.status);
+  return updated;
+}
+
+/**
+ * ⑥ Bếp làm xong hết món thì trả lại phục vụ bàn.
+ * Bắt buộc đã tick đủ: không tick đủ mà bấm thì báo rõ món nào còn thiếu.
+ */
+export async function kitchenFinishOrder(order: Order, staff: { id: number; full_name: string }): Promise<Order> {
+  if (order.status !== 'kitchen_accepted') throw conflict('Chỉ đơn bếp đang nấu mới trả lại được.');
+
+  const pending = order.items.filter((i) => !i.kitchen_done_at);
+  if (pending.length > 0) {
+    const names = pending.map((i) => `${i.dish_name} ×${i.quantity}`).join(', ');
+    throw conflict(`Còn ${pending.length} món chưa tick hoàn thành: ${names}.`);
+  }
+
+  await withTransaction(async (client) => {
+    const { rows } = await client.query<{ status: OrderStatus }>(
+      `UPDATE orders
+          SET status = 'ready_to_serve',
+              kitchen_done_at = NOW(),
+              kitchen_done_by = $2,
+              kitchen_done_by_name = $3
+        WHERE id = $1 AND status = 'kitchen_accepted'
+        RETURNING status`,
+      [order.id, staff.id, staff.full_name],
+    );
+    if (rows.length === 0) throw conflict('Đơn vừa được cập nhật bởi nhân viên khác.');
+
+    await addEvent(client, order.id, {
+      event_type: 'kitchen_finished',
+      from_status: 'kitchen_accepted',
+      to_status: 'ready_to_serve',
+      actor_type: 'kitchen',
+      actor_id: staff.id,
+      actor_name: staff.full_name,
+    });
+  });
+
+  const updated = (await getOrderById(order.id))!;
+  notifyOrderChanged(updated.order_no, updated.table_id, updated.status);
+  return updated;
+}
+
+/**
+ * ⑦ Phục vụ bàn nhận lại đơn từ bếp và phục vụ khách.
+ * Chấp nhận cả hai nguồn: từ bếp (ready_to_serve) hoặc từ bước nhận order
+ * (confirmed, cho món không qua bếp).
+ */
+export async function markServed(order: Order, staff: { id: number; full_name: string }): Promise<Order> {
+  if (order.status !== 'confirmed' && order.status !== 'ready_to_serve') {
+    throw conflict('Chỉ đơn đã nhận hoặc đã bếp trả lại mới chuyển sang đã phục vụ.');
+  }
+  const from: OrderStatus = order.status;
+
+  await withTransaction(async (client) => {
+    const { rows } = await client.query<{ status: OrderStatus }>(
+      `UPDATE orders SET status = 'served', served_at = NOW(), served_by = $2
+        WHERE id = $1 AND status = $3
+        RETURNING status`,
+      [order.id, staff.id, from],
+    );
+    if (rows.length === 0) throw conflict('Đơn vừa được cập nhật bởi nhân viên khác.');
+
     await addEvent(client, order.id, {
       event_type: 'served',
-      from_status: 'confirmed',
+      from_status: from,
       to_status: 'served',
       actor_type: 'staff',
       actor_id: staff.id,
@@ -567,17 +733,25 @@ export async function markServed(order: Order, staff: { id: number; full_name: s
   return updated;
 }
 
-/** Mở lại đơn đã phục vụ về trạng thái đang xác nhận */
+/** Mở lại đơn đã phục vụ. Giữ nguyên việc bếp đã làm (không xoá tick). */
 export async function unservedOrder(order: Order, staff: { id: number; full_name: string }): Promise<Order> {
   if (order.status !== 'served') throw conflict('Chỉ đơn đã phục vụ mới mở lại được.');
   await withTransaction(async (client) => {
-    await client.query(`UPDATE orders SET status = 'confirmed', served_at = NULL, served_by = NULL WHERE id = $1`, [
-      order.id,
-    ]);
+    // Mở lại đơn có đi qua bếp thì quay về "bếp đã trả", còn không thì về "đã nhận".
+    const back: OrderStatus = order.kitchen_done_at ? 'ready_to_serve' : 'confirmed';
+    const { rows } = await client.query<{ status: OrderStatus }>(
+      `UPDATE orders
+          SET status = $2, served_at = NULL, served_by = NULL
+        WHERE id = $1 AND status = 'served'
+        RETURNING status`,
+      [order.id, back],
+    );
+    if (rows.length === 0) throw conflict('Đơn vừa được cập nhật bởi nhân viên khác.');
+
     await addEvent(client, order.id, {
       event_type: 'unserved',
       from_status: 'served',
-      to_status: 'confirmed',
+      to_status: back,
       actor_type: 'staff',
       actor_id: staff.id,
       actor_name: staff.full_name,

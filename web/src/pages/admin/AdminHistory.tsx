@@ -146,6 +146,8 @@ export function AdminHistory() {
           ⬇ Xuất CSV
         </button>
       }
+      onRefresh={state.reload}
+      refreshing={state.loading}
     >
       <div className="s-filters">
         <div className="field">

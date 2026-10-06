@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import { query, queryOne } from '../db.js';
 import { config } from '../config.js';
 import { asyncRoute, ok } from '../middleware/errors.js';
-import { requireStaff } from '../middleware/auth.js';
+import { requireStaff, requireWaiter } from '../middleware/auth.js';
 import { badRequest, forbidden, notFound, toInt } from '../utils.js';
 import {
   confirmOrder,
@@ -15,6 +15,7 @@ import {
   markPaid,
   markServed,
   rejectOrder,
+  sendToKitchen,
   unservedOrder,
 } from '../services/order.service.js';
 import {
@@ -25,17 +26,14 @@ import {
   normalizeDiscountCode,
   scopeBranchId,
 } from '../services/branch.js';
-import {
-  listAnnouncementsForUser,
-  markAllAnnouncementsRead,
-  markAnnouncementRead,
-} from '../services/announcement.service.js';
 import type { Branch, Order, OrderStatus, RestTable } from '../types.js';
 
 export const staffRouter = Router();
 
 // Admin cũng dùng được toàn bộ API này (Admin có quyền như nhân viên).
-staffRouter.use(requireStaff);
+// Admin cũng dùng được toàn bộ API này (Admin có quyền như phục vụ bàn).
+// Phục vụ bếp bị loại khỏi đây: bếp dùng bảng riêng ở /api/kitchen.
+staffRouter.use(requireStaff, requireWaiter);
 
 /* ------------------------------------------------------------------ *
  *  Phạm vi cơ sở
@@ -93,7 +91,17 @@ const listSchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
 });
 
-const VALID_STATUS: OrderStatus[] = ['draft', 'pending', 'confirmed', 'served', 'paid', 'cancelled'];
+const VALID_STATUS: OrderStatus[] = [
+  'draft',
+  'pending',
+  'confirmed',
+  'sent_kitchen',
+  'kitchen_accepted',
+  'ready_to_serve',
+  'served',
+  'paid',
+  'cancelled',
+];
 
 staffRouter.get(
   '/orders',
@@ -124,11 +132,18 @@ staffRouter.get(
   }),
 );
 
-/** Danh sách hóa đơn chưa thanh toán (màn Thanh toán) */
+/**
+ * Danh sách hóa đơn chưa thanh toán (màn Thanh toán).
+ * Gồm cả đơn đang ở bếp: khách vẫn chưa trả tiền nên vẫn là hóa đơn tồn.
+ */
 staffRouter.get(
   '/orders/unpaid',
   asyncRoute(async (req, res) => {
-    const { rows } = await listOrders({ statuses: ['confirmed', 'served'], branchId: branchFilter(req), limit: 200 });
+    const { rows } = await listOrders({
+      statuses: ['confirmed', 'sent_kitchen', 'kitchen_accepted', 'ready_to_serve', 'served'],
+      branchId: branchFilter(req),
+      limit: 200,
+    });
     ok(res, rows);
   }),
 );
@@ -179,6 +194,15 @@ staffRouter.post(
     const order = await loadOrderByNo(req, req.params.orderNo);
     const body = z.object({ served: z.boolean().default(true) }).parse(req.body ?? {});
     ok(res, body.served ? await markServed(order, staffOf(req)) : await unservedOrder(order, staffOf(req)));
+  }),
+);
+
+/** ③ Phục vụ bàn chuyển đơn qua cho phục vụ bếp. */
+staffRouter.post(
+  '/orders/:orderNo/send-kitchen',
+  asyncRoute(async (req, res) => {
+    const order = await loadOrderByNo(req, req.params.orderNo);
+    ok(res, await sendToKitchen(order, staffOf(req)));
   }),
 );
 
@@ -261,7 +285,8 @@ staffRouter.get(
       `SELECT t.*, b.name AS branch_name,
               (SELECT COUNT(*)::int FROM orders o
                 WHERE o.table_id = t.id
-                  AND o.status IN ('pending','confirmed','served')) AS active_order_count
+                  AND o.status IN ('pending','confirmed','sent_kitchen','kitchen_accepted','ready_to_serve','served')
+              ) AS active_order_count
          FROM rest_tables t
          LEFT JOIN branches b ON b.id = t.branch_id
          ${where}
@@ -335,47 +360,6 @@ staffRouter.post(
       [order.id, u.id, u.full_name],
     );
     ok(res, await getOrderByNo(order.order_no, true));
-  }),
-);
-
-/* ------------------------------------------------------------------ *
- *  THÔNG BÁO NỘI BỘ
- *
- *  Nhân viên đọc thông báo Admin gửi. Trạng thái "đã đọc" lưu theo từng tài khoản
- *  nên nhân viên nhận ca mới vẫn thấy các thông báo cũ chưa đọc của mình.
- * ------------------------------------------------------------------ */
-
-/** Danh sách thông báo + số đếm chưa đọc (dùng cho trang thông báo & badge sidebar). */
-staffRouter.get(
-  '/announcements',
-  asyncRoute(async (req, res) => {
-    ok(res, await listAnnouncementsForUser(req.staff!.id));
-  }),
-);
-
-/** Số thông báo chưa đọc — gọi nhẹ cho badge (không tải cả nội dung). */
-staffRouter.get(
-  '/announcements/unread-count',
-  asyncRoute(async (req, res) => {
-    const { unread_count } = await listAnnouncementsForUser(req.staff!.id);
-    ok(res, { unread_count });
-  }),
-);
-
-/** Đánh dấu 1 thông báo đã đọc. */
-staffRouter.post(
-  '/announcements/:id/read',
-  asyncRoute(async (req, res) => {
-    const id = toInt(req.params.id, 0);
-    ok(res, await markAnnouncementRead(id, req.staff!.id));
-  }),
-);
-
-/** Đánh dấu đã đọc tất cả. */
-staffRouter.post(
-  '/announcements/read-all',
-  asyncRoute(async (req, res) => {
-    ok(res, await markAllAnnouncementsRead(req.staff!.id));
   }),
 );
 

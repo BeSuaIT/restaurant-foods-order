@@ -9,8 +9,6 @@ export type StreamEvent =
       status: string;
     }
   | { type: 'menu.updated' | 'table.updated' }
-  /** Admin vừa đăng/gỡ một thông báo nội bộ */
-  | { type: 'announcement.updated' }
   | { type: 'heartbeat' };
 
 /** Danh sách sự kiện server gửi. Thêm ở đây là đủ, không cần sửa thêm chỗ nào. */
@@ -22,7 +20,6 @@ const STREAM_TYPES: StreamEvent['type'][] = [
   'order.cancelled',
   'menu.updated',
   'table.updated',
-  'announcement.updated',
   'heartbeat',
 ];
 

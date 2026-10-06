@@ -9,7 +9,8 @@ import { useStaffAuth } from '../../hooks/useStaffAuth';
 import { ADMIN_SECTIONS, AppLayout, STAFF_SECTIONS } from '../../components/AppLayout';
 import { BillModal } from '../../components/BillModal';
 import { StatusBadge } from '../../components/OrderBits';
-import type { Branch, Order, RestTable } from '../../types';
+import { RealtimeClock } from '../../components/RealtimeClock';
+import { ACTIVE_ORDER_STATUSES, type Branch, type Order, type RestTable } from '../../types';
 
 interface TableWithOrders extends RestTable {
   active_order_count: number;
@@ -36,7 +37,7 @@ export function StaffTables() {
   const orders = useAsync<{ rows: Order[]; total: number }>(
     (signal) =>
       api.get<{ rows: Order[]; total: number }>(
-        `/staff/orders?status=pending,confirmed,served&limit=200${qs}`,
+        `/staff/orders?status=${ACTIVE_ORDER_STATUSES.join(',')}&limit=200${qs}`,
         { signal },
       ),
     [qs],
@@ -89,6 +90,11 @@ export function StaffTables() {
           <span className="badge badge-info">🏢 {user.branch_name}</span>
         ) : null
       }
+      onRefresh={() => {
+        tables.reload();
+        orders.reload();
+      }}
+      refreshing={tables.loading || orders.loading}
     >
       {user && user.role === 'staff' && user.branch_id === null ? (
         <div className="alert alert-warn">

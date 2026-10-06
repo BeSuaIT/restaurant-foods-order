@@ -8,6 +8,7 @@ import { asyncRoute, errorHandler, notFoundHandler, ok } from './middleware/erro
 import { authRouter } from './routes/auth.js';
 import { publicRouter } from './routes/customer.js';
 import { staffRouter } from './routes/staff.js';
+import { kitchenRouter } from './routes/kitchen.js';
 import { adminRouter } from './routes/admin.js';
 import { streamRouter, streamStats } from './routes/stream.js';
 import { uploadRouter } from './routes/upload.js';
@@ -38,6 +39,7 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api', publicRouter);
   app.use('/api/staff', staffRouter);
+  app.use('/api/kitchen', kitchenRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/stream', streamRouter);
   app.use('/api/upload', uploadRouter);
